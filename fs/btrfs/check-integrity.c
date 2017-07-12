@@ -2929,7 +2929,7 @@ int btrfsic_mount(struct btrfs_root *root,
 		       root->sectorsize, PAGE_SIZE);
 		return -1;
 	}
-	state = kzalloc(sizeof(*state), GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
+	state = kzalloc(sizeof(*state), GFP_KERNEL | __GFP_NOWARN | __GFP_RETRY_MAYFAIL);
 	if (!state) {
 		state = vzalloc(sizeof(*state));
 		if (!state) {

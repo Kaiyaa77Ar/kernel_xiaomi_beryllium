@@ -484,7 +484,8 @@ static inline void *__compat_kvmalloc(size_t size, gfp_t flags)
 	void *ret;
 	if (size > PAGE_SIZE) {
 		kmalloc_flags |= __GFP_NOWARN;
-		if (!(kmalloc_flags & __GFP_REPEAT) || (size <= PAGE_SIZE << PAGE_ALLOC_COSTLY_ORDER))
+		if (!(kmalloc_flags & __GFP_RETRY_MAYFAIL) ||
+		    (size <= PAGE_SIZE << PAGE_ALLOC_COSTLY_ORDER))
 			kmalloc_flags |= __GFP_NORETRY;
 	}
 	ret = kmalloc(size, kmalloc_flags);
