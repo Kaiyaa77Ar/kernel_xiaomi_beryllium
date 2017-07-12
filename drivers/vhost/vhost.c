@@ -534,7 +534,7 @@ EXPORT_SYMBOL_GPL(vhost_dev_set_owner);
 
 static void *vhost_kvzalloc(unsigned long size)
 {
-	void *n = kzalloc(size, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
+	void *n = kzalloc(size, GFP_KERNEL | __GFP_NOWARN | __GFP_RETRY_MAYFAIL);
 
 	if (!n)
 		n = vzalloc(size);

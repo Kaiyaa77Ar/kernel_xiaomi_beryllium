@@ -660,7 +660,7 @@ static void *fq_alloc_node(size_t sz, int node)
 {
 	void *ptr;
 
-	ptr = kmalloc_node(sz, GFP_KERNEL | __GFP_REPEAT | __GFP_NOWARN, node);
+	ptr = kmalloc_node(sz, GFP_KERNEL | __GFP_RETRY_MAYFAIL | __GFP_NOWARN, node);
 	if (!ptr)
 		ptr = vmalloc_node(sz, node);
 	return ptr;
