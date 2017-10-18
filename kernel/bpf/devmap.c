@@ -113,6 +113,9 @@ static int dev_map_init_map(struct bpf_dtab *dtab, union bpf_attr *attr)
 	u64 cost = 0;
 	int err;
 
+	if (!capable(CAP_NET_ADMIN))
+		return ERR_PTR(-EPERM);
+
 	/* check sanity of attributes */
 	if (attr->max_entries == 0 || attr->key_size != 4 ||
 	    attr->value_size != 4 || attr->map_flags & ~DEV_CREATE_FLAG_MASK)
