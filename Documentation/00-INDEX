@@ -94,8 +94,6 @@ bcache.txt
 	- Block-layer cache on fast SSDs to improve slow (raid) I/O performance.
 binfmt_misc.txt
 	- info on the kernel support for extra binary formats.
-blackfin/
-	- directory with documentation for the Blackfin arch.
 block/
 	- info on the Block I/O (BIO) layer.
 blockdev/

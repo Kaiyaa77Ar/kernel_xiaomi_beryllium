@@ -1192,7 +1192,7 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			address. The serial port must already be setup
 			and configured. Options are not yet supported.
 
-	earlyprintk=	[X86,SH,BLACKFIN,ARM,M68k]
+	earlyprintk=	[X86,SH,ARM,M68k]
 			earlyprintk=vga
 			earlyprintk=efi
 			earlyprintk=xen
