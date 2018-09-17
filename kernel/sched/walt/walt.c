@@ -1789,7 +1789,7 @@ static void update_history(struct rq *rq, struct task_struct *p,
 	p->ravg.coloc_demand = div64_u64(sum, sched_ravg_hist_size);
 	p->ravg.pred_demand = pred_demand;
 
-	if (demand > sysctl_sched_min_task_util_for_boost_colocation)
+	if (demand > sysctl_sched_min_task_util_for_boost)
 		p->unfilter = sysctl_sched_task_unfilter_nr_windows;
 	else if (p->unfilter)
 		p->unfilter -= 1;
