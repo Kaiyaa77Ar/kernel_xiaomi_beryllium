@@ -259,6 +259,17 @@ config ACPI_CPPC_CPUFREQ
 
 	  If in doubt, say N.
 
+config ARM_QCOM_CPUFREQ_HW
+	bool "QCOM CPUFreq HW driver"
+	depends on ARCH_QCOM
+	help
+	 Support for the CPUFreq HW driver.
+	 Some QCOM chipsets have a HW engine to offload the steps
+	 necessary for changing the frequency of the CPUs. Firmware loaded
+	 in this engine exposes a programming interface to the OS.
+	 The driver implements the cpufreq interface for this HW engine.
+	 Say Y if you want to support CPUFreq HW.
+
 config CPU_FREQ_MSM
 	bool "MSM CPUFreq support"
 	depends on CPU_FREQ
