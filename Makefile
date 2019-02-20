@@ -805,6 +805,9 @@ else
   # Force off for distro compilers that enable stack protector by default.
   stackp-flag := $(call cc-option, -fno-stack-protector)
 endif
+ifeq ($(cc-name),clang)
+KBUILD_CPPFLAGS += -Qunused-arguments
+endif
 endif
 # Find arch-specific stack protector compiler sanity-checking script.
 ifdef CONFIG_CC_STACKPROTECTOR
@@ -814,7 +817,6 @@ endif
 KBUILD_CFLAGS += $(stackp-flag)
 
 ifeq ($(cc-name),clang)
-KBUILD_CPPFLAGS += $(call cc-option,-Qunused-arguments,)
 KBUILD_CFLAGS += $(call cc-disable-warning, format-invalid-specifier)
 KBUILD_CFLAGS += $(call cc-disable-warning, gnu)
 KBUILD_CFLAGS += $(call cc-disable-warning, duplicate-decl-specifier)
