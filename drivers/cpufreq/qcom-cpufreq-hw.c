@@ -11,6 +11,7 @@
 #include <linux/of_platform.h>
 #include <linux/pm_opp.h>
 #include <linux/sched.h>
+#include <linux/cpu_cooling.h>
 
 #define LUT_MAX_ENTRIES			40U
 #define CORE_COUNT_VAL(val)		(((val) & (GENMASK(18, 16))) >> 16)
@@ -170,6 +171,35 @@ static struct freq_attr *qcom_cpufreq_hw_attr[] = {
 	NULL
 };
 
+static void qcom_cpufreq_ready(struct cpufreq_policy *policy)
+{
+	static struct thermal_cooling_device *cdev[NR_CPUS];
+	struct device_node *np;
+	unsigned int cpu = policy->cpu;
+
+	if (cdev[cpu])
+		return;
+
+	np = of_cpu_device_node_get(cpu);
+	if (WARN_ON(!np))
+		return;
+
+	/*
+	 * For now, just loading the cooling device;
+	 * thermal DT code takes care of matching them.
+	 */
+	if (of_find_property(np, "#cooling-cells", NULL)) {
+		cdev[cpu] = of_cpufreq_cooling_register(np, policy->cpus);
+		if (IS_ERR(cdev[cpu])) {
+			pr_err("running cpufreq for CPU%d without cooling dev: %ld\n",
+			       cpu, PTR_ERR(cdev[cpu]));
+			cdev[cpu] = NULL;
+		}
+	}
+
+	of_node_put(np);
+}
+
 static struct cpufreq_driver cpufreq_qcom_hw_driver = {
 	.flags		= CPUFREQ_STICKY | CPUFREQ_NEED_INITIAL_FREQ_CHECK |
 			  CPUFREQ_HAVE_GOVERNOR_PER_POLICY,
@@ -181,6 +211,7 @@ static struct cpufreq_driver cpufreq_qcom_hw_driver = {
 	.name		= "qcom-cpufreq-hw",
 	.attr		= qcom_cpufreq_hw_attr,
 	.boost_enabled	= true,
+	.ready		= qcom_cpufreq_ready,
 };
 
 static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
