@@ -2359,7 +2359,7 @@ static inline void note_task_waking(struct task_struct *p, u64 wallclock) { }
 #endif /* CONFIG_SCHED_WALT */
 
 #ifdef CONFIG_CPU_FREQ
-DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
+DECLARE_PER_CPU(struct update_util_data __rcu *, cpufreq_update_util_data);
 
 /**
  * cpufreq_update_util - Take a note about CPU utilization changes.
