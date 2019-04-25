@@ -2004,6 +2004,8 @@ static int bpf_prog_query(const union bpf_attr *attr,
 	case BPF_CGROUP_DEVICE:
 	case BPF_CGROUP_SYSCTL:
 		break;
+	case BPF_FLOW_DISSECTOR:
+		return skb_flow_dissector_prog_query(attr, uattr);
 	default:
 		return -EINVAL;
 	}
