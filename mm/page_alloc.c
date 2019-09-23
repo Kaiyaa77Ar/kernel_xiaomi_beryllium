@@ -3444,13 +3444,22 @@ should_compact_retry(struct alloc_context *ac, int order, int alloc_flags,
 		goto check_priority;
 
 	/*
+	 * compaction was skipped because there are not enough order-0 pages
+	 * to work with, so we retry only if it looks like reclaim can help.
+	 */
+	if (compaction_needs_reclaim(compact_result)) {
+		return compaction_zonelist_suitable(ac, order, alloc_flags);
+	}
+
+	/*
 	 * make sure the compaction wasn't deferred or didn't bail out early
 	 * due to locks contention before we declare that we should give up.
-	 * But do not retry if the given zonelist is not suitable for
-	 * compaction.
+	 * But the next retry should use a higher priority if allowed, so
+	 * we don't just keep bailing out endlessly.
 	 */
-	if (compaction_withdrawn(compact_result))
-		return compaction_zonelist_suitable(ac, order, alloc_flags);
+	if (compaction_withdrawn(compact_result)) {
+		goto check_priority;
+	}
 
 	/*
 	 * !costly requests are much more important than __GFP_RETRY_MAYFAIL
