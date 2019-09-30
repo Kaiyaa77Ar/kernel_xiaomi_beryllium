@@ -160,7 +160,7 @@ static FORCE_INLINE int LZ4_decompress_generic(
 	 endCondition_directive endOnInput,
 	 /* full, partial */
 	 earlyEnd_directive partialDecoding,
-	 /* noDict, withPrefix64k, usingExtDict */
+	 /* noDict, withPrefix64k */
 	 dict_directive dict,
 	 /* always <= dst, == dst when no prefix */
 	 const BYTE * const lowPrefix,
@@ -176,8 +176,6 @@ static FORCE_INLINE int LZ4_decompress_generic(
 	BYTE *op = (BYTE *) dst;
 	BYTE *const oend = op + outputSize;
 	BYTE *cpy;
-
-	const BYTE *const dictEnd = (const BYTE *)dictStart + dictSize;
 
 	const int safeDecode = (endOnInput == endOnInputSize);
 	const int checkOffset = ((safeDecode) && (dictSize < (int)(64 * KB)));
@@ -596,6 +594,7 @@ _copy_match:
 safe_match_copy:
 #endif
 
+#if 0
 		/* match starting within external dictionary */
 		if ((dict == usingExtDict) && (match < lowPrefix)) {
 			if (unlikely(op + length > oend - LASTLITERALS)) {
@@ -637,6 +636,7 @@ safe_match_copy:
 			}
 			continue;
 		}
+#endif
 
 		/* copy match within block */
 		cpy = op + length;
@@ -729,6 +729,7 @@ int LZ4_decompress_safe(const char *source, char *dest,
 				      noDict, (BYTE *)dest, NULL, 0);
 }
 
+#if 0
 static int LZ4_decompress_safe_partial(const char *src, char *dst,
 	int compressedSize, int targetOutputSize, int dstCapacity)
 {
@@ -737,6 +738,7 @@ static int LZ4_decompress_safe_partial(const char *src, char *dst,
 				      endOnInputSize, partial_decode,
 				      noDict, (BYTE *)dst, NULL, 0);
 }
+#endif
 
 int LZ4_decompress_fast(const char *source, char *dest, int originalSize)
 {
@@ -746,6 +748,7 @@ int LZ4_decompress_fast(const char *source, char *dest, int originalSize)
 				      (BYTE *)dest - 64 * KB, NULL, 0);
 }
 
+#if 0
 /* ===== Instantiate a few more decoding cases, used more than once. ===== */
 
 static int LZ4_decompress_safe_withPrefix64k(const char *source, char *dest,
@@ -967,6 +970,7 @@ static int LZ4_decompress_fast_usingDict(const char *source, char *dest,
 	return LZ4_decompress_fast_extDict(source, dest, originalSize,
 		dictStart, dictSize);
 }
+#endif
 
 #ifndef STATIC
 MODULE_LICENSE("Dual BSD/GPL");
