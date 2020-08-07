@@ -59,16 +59,17 @@ __setup("hlt", cpu_idle_nopoll_setup);
 
 static noinline int __cpuidle cpu_idle_poll(void)
 {
-	rcu_idle_enter();
-	trace_cpu_idle_rcuidle(0, smp_processor_id());
-	local_irq_enable();
+	trace_cpu_idle(0, smp_processor_id());
 	stop_critical_timings();
+	rcu_idle_enter();
+	local_irq_enable();
 	while (!tif_need_resched() &&
 		(cpu_idle_force_poll || tick_check_broadcast_expired()))
 		cpu_relax();
-	start_critical_timings();
-	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, smp_processor_id());
+	local_irq_disable();
 	rcu_idle_exit();
+	start_critical_timings();
+	trace_cpu_idle(PWR_EVENT_EXIT, smp_processor_id());
 	return 1;
 }
 
@@ -94,7 +95,9 @@ void __cpuidle default_idle_call(void)
 		local_irq_enable();
 	} else {
 		stop_critical_timings();
+		rcu_idle_enter();
 		arch_cpu_idle();
+		rcu_idle_exit();
 		start_critical_timings();
 	}
 }
@@ -144,13 +147,6 @@ static void cpuidle_idle_call(void)
 		return;
 	}
 
-	/*
-	 * Tell the RCU framework we are entering an idle section,
-	 * so no more rcu read side critical sections and one more
-	 * step to the grace period
-	 */
-	rcu_idle_enter();
-
 	if (cpuidle_not_available(drv, dev)) {
 		default_idle_call();
 		goto exit_idle;
@@ -194,8 +190,6 @@ exit_idle:
 	 */
 	if (WARN_ON_ONCE(irqs_disabled()))
 		local_irq_enable();
-
-	rcu_idle_exit();
 }
 
 /*
