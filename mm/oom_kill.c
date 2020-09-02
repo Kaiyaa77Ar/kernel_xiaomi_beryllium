@@ -55,6 +55,8 @@ int sysctl_reap_mem_on_sigkill;
 static unsigned long panic_on_oom_timeout;
 #endif
 DEFINE_MUTEX(oom_lock);
+/* Serializes oom_score_adj and oom_score_adj_min updates */
+DEFINE_MUTEX(oom_adj_mutex);
 
 #ifdef CONFIG_NUMA
 /**
