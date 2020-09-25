@@ -45,6 +45,7 @@ struct dma_heap_attachment {
 	struct device *dev;
 	struct sg_table *table;
 	struct list_head list;
+	bool mapped;
 
 	bool uncached;
 };
@@ -110,6 +111,7 @@ static int system_heap_attach(struct dma_buf *dmabuf,
 	a->table = table;
 	a->dev = dev;
 	INIT_LIST_HEAD(&a->list);
+	a->mapped = false;
 	a->uncached = buffer->uncached;
 	attachment->priv = a;
 
@@ -151,6 +153,7 @@ static struct sg_table *system_heap_map_dma_buf(struct dma_buf_attachment *attac
 	if (!ret)
 		return ERR_PTR(-EINVAL);
 	table->nents = ret;
+	a->mapped = true;
 
 	return table;
 }
@@ -164,6 +167,7 @@ static void system_heap_unmap_dma_buf(struct dma_buf_attachment *attachment,
 
 	if (a->uncached)
 		attr = DMA_ATTR_SKIP_CPU_SYNC;
+	a->mapped = false;
 	dma_unmap_sg_attrs(attachment->dev, table->sgl, table->orig_nents,
 			   direction, attr);
 }
@@ -181,6 +185,8 @@ static int system_heap_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 
 	if (!buffer->uncached) {
 		list_for_each_entry(a, &buffer->attachments, list) {
+			if (!a->mapped)
+				continue;
 			dma_sync_sg_for_cpu(a->dev, a->table->sgl,
 					    a->table->orig_nents, direction);
 		}
@@ -203,6 +209,8 @@ static int system_heap_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 
 	if (!buffer->uncached) {
 		list_for_each_entry(a, &buffer->attachments, list) {
+			if (!a->mapped)
+				continue;
 			dma_sync_sg_for_device(a->dev, a->table->sgl,
 					       a->table->orig_nents, direction);
 		}
