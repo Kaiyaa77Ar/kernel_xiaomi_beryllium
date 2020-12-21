@@ -5,7 +5,7 @@ config DMABUF_HEAPS_PAGE_POOL
 	tristate
 
 config DMABUF_HEAPS_SYSTEM
-	bool "DMA-BUF System Heap"
+	tristate "DMA-BUF System Heap"
 	depends on DMABUF_HEAPS
 	select DMABUF_HEAPS_PAGE_POOL
 	select DMABUF_HEAPS_DEFERRED_FREE
