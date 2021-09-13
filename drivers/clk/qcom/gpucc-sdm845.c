@@ -769,6 +769,7 @@ static struct platform_driver gpu_cc_gfx_sdm845_driver = {
 	.driver = {
 		.name = "gfxcc-sdm845",
 		.of_match_table = gpu_cc_gfx_sdm845_match_table,
+		.probe_type = PROBE_FORCE_SYNCHRONOUS,
 	},
 };
 
@@ -840,6 +841,7 @@ static struct platform_driver gpu_cc_sdm845_driver = {
 	.driver = {
 		.name = "gpu_cc-sdm845",
 		.of_match_table = gpu_cc_sdm845_match_table,
+		.probe_type = PROBE_FORCE_SYNCHRONOUS,
 	},
 };
 
