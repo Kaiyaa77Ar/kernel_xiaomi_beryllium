@@ -39,6 +39,7 @@
 void page_writeback_init(void);
 
 int do_swap_page(struct fault_env *fe, pte_t orig_pte);
+void activate_page(struct page *page);
 
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
 extern struct vm_area_struct *get_vma(struct mm_struct *mm,
