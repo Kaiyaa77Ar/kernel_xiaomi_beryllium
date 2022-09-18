@@ -16,6 +16,7 @@
 #include <linux/miscdevice.h>
 #include <linux/namei.h>
 #include <linux/pagemap.h>
+#include <linux/mmdebug.h>
 #include <linux/file.h>
 #include <linux/slab.h>
 #include <linux/pipe_fs_i.h>
@@ -841,9 +842,11 @@ static int fuse_check_page(struct page *page)
 	       1 << PG_uptodate |
 	       1 << PG_lru |
 	       1 << PG_active |
-	       1 << PG_reclaim))) {
-		printk(KERN_WARNING "fuse: trying to steal weird page\n");
-		printk(KERN_WARNING "  page=%p index=%li flags=%08lx, count=%i, mapcount=%i, mapping=%p\n", page, page->index, page->flags, page_count(page), page_mapcount(page), page->mapping);
+	       1 << PG_workingset |
+	       1 << PG_reclaim |
+	       1 << PG_waiters |
+	       LRU_GEN_MASK | LRU_REFS_MASK))) {
+		dump_page(page, "fuse: trying to steal weird page");
 		return 1;
 	}
 	return 0;
