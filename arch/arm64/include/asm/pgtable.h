@@ -751,6 +751,19 @@ extern pgd_t tramp_pg_dir[PTRS_PER_PGD];
 
 extern int kern_addr_valid(unsigned long addr);
 
+/* 4.9 has no cpu_has_hw_af; AFDBM is compile-time here. */
+#define arch_has_hw_pte_young	arch_has_hw_pte_young
+static inline bool arch_has_hw_pte_young(void)
+{
+	return IS_ENABLED(CONFIG_ARM64_HW_AFDBM);
+}
+
+#define arch_wants_old_prefaulted_pte	arch_wants_old_prefaulted_pte
+static inline bool arch_wants_old_prefaulted_pte(void)
+{
+	return IS_ENABLED(CONFIG_ARM64_HW_AFDBM);
+}
+
 #include <asm-generic/pgtable.h>
 
 void pgd_cache_init(void);
