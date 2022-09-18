@@ -115,6 +115,17 @@ int randomize_va_space __read_mostly =
 					2;
 #endif
 
+#ifndef arch_wants_old_prefaulted_pte
+static inline bool arch_wants_old_prefaulted_pte(void)
+{
+	/*
+	 * Transitioning a PTE from 'old' to 'young' can be expensive on
+	 * some architectures, even if it's performed in hardware. By
+	 * default, "false" means prefaulted entries will be 'young'.
+	 */
+	return false;
+}
+#endif
 static int __init disable_randmaps(char *s)
 {
 	randomize_va_space = 0;
