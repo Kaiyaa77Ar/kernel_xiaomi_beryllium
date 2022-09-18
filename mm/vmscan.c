@@ -1603,10 +1603,9 @@ int isolate_lru_page(struct page *page)
 		spin_lock_irq(zone_lru_lock(zone));
 		lruvec = mem_cgroup_page_lruvec(page, zone->zone_pgdat);
 		if (PageLRU(page)) {
-			int lru = page_lru(page);
 			get_page(page);
 			ClearPageLRU(page);
-			del_page_from_lru_list(page, lruvec, lru);
+			del_page_from_lru_list(page, lruvec);
 			ret = 0;
 		}
 		spin_unlock_irq(zone_lru_lock(zone));
@@ -1705,7 +1704,7 @@ putback_inactive_pages(struct lruvec *lruvec, struct list_head *page_list)
 
 		SetPageLRU(page);
 		lru = page_lru(page);
-		add_page_to_lru_list(page, lruvec, lru);
+		add_page_to_lru_list(page, lruvec);
 
 		if (is_active_lru(lru)) {
 			int file = is_file_lru(lru);
@@ -1715,7 +1714,7 @@ putback_inactive_pages(struct lruvec *lruvec, struct list_head *page_list)
 		if (put_page_testzero(page)) {
 			__ClearPageLRU(page);
 			__ClearPageActive(page);
-			del_page_from_lru_list(page, lruvec, lru);
+			del_page_from_lru_list(page, lruvec);
 
 			if (unlikely(PageCompound(page))) {
 				spin_unlock_irq(&pgdat->lru_lock);
@@ -1968,7 +1967,7 @@ static void move_active_pages_to_lru(struct lruvec *lruvec,
 		if (put_page_testzero(page)) {
 			__ClearPageLRU(page);
 			__ClearPageActive(page);
-			del_page_from_lru_list(page, lruvec, lru);
+			del_page_from_lru_list(page, lruvec);
 
 			if (unlikely(PageCompound(page))) {
 				spin_unlock_irq(&pgdat->lru_lock);
@@ -2412,6 +2411,81 @@ out:
 		nr[lru] = scan;
 	}
 }
+
+#ifdef CONFIG_LRU_GEN
+
+/******************************************************************************
+ *                          shorthand helpers
+ ******************************************************************************/
+
+#define for_each_gen_type_zone(gen, type, zone)				\
+	for ((gen) = 0; (gen) < MAX_NR_GENS; (gen)++)			\
+		for ((type) = 0; (type) < ANON_AND_FILE; (type)++)	\
+			for ((zone) = 0; (zone) < MAX_NR_ZONES; (zone)++)
+
+static struct lruvec __maybe_unused *get_lruvec(struct mem_cgroup *memcg, int nid)
+{
+	struct pglist_data *pgdat = NODE_DATA(nid);
+
+#ifdef CONFIG_MEMCG
+	if (memcg) {
+		struct lruvec *lruvec = &memcg->nodeinfo[nid]->lruvec;
+
+		/* for hotadd_new_pgdat() */
+		if (!lruvec->pgdat)
+			lruvec->pgdat = pgdat;
+
+		return lruvec;
+	}
+#endif
+	VM_WARN_ON_ONCE(!mem_cgroup_disabled());
+
+	return pgdat ? node_lruvec(pgdat) : NULL;
+}
+
+/******************************************************************************
+ *                          initialization
+ ******************************************************************************/
+
+void lru_gen_init_lruvec(struct lruvec *lruvec)
+{
+	int gen, type, zone;
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+
+	lrugen->max_seq = MIN_NR_GENS + 1;
+
+	for_each_gen_type_zone(gen, type, zone)
+		INIT_LIST_HEAD(&lrugen->lists[gen][type][zone]);
+}
+
+#ifdef CONFIG_MEMCG
+void lru_gen_init_memcg(struct mem_cgroup *memcg)
+{
+}
+
+void lru_gen_exit_memcg(struct mem_cgroup *memcg)
+{
+	int nid;
+
+	for_each_node(nid) {
+		struct lruvec *lruvec = get_lruvec(memcg, nid);
+
+		VM_WARN_ON_ONCE(memchr_inv(lruvec->lrugen.nr_pages, 0,
+					   sizeof(lruvec->lrugen.nr_pages)));
+	}
+}
+#endif
+
+static int __init init_lru_gen(void)
+{
+	BUILD_BUG_ON(MIN_NR_GENS + 1 >= MAX_NR_GENS);
+	BUILD_BUG_ON(BIT(LRU_GEN_WIDTH) <= MAX_NR_GENS);
+
+	return 0;
+};
+late_initcall(init_lru_gen);
+
+#endif /* CONFIG_LRU_GEN */
 
 /*
  * This is a basic per-node page freer.  Used by both kswapd and direct reclaim.
@@ -4125,12 +4199,10 @@ void check_move_unevictable_pages(struct page **pages, int nr_pages)
 			continue;
 
 		if (page_evictable(page)) {
-			enum lru_list lru = page_lru_base_type(page);
-
 			VM_BUG_ON_PAGE(PageActive(page), page);
 			ClearPageUnevictable(page);
-			del_page_from_lru_list(page, lruvec, LRU_UNEVICTABLE);
-			add_page_to_lru_list(page, lruvec, lru);
+			del_page_from_lru_list(page, lruvec);
+			add_page_to_lru_list(page, lruvec);
 			pgrescued++;
 		}
 	}
