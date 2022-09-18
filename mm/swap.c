@@ -355,6 +355,41 @@ static void __lru_cache_activate_page(struct page *page)
 	put_cpu_var(lru_add_pvec);
 }
 
+#ifdef CONFIG_LRU_GEN
+static void page_inc_refs(struct page *page)
+{
+	unsigned long new_flags, old_flags;
+
+	if (PageUnevictable(page))
+		return;
+
+	if (!PageReferenced(page)) {
+		SetPageReferenced(page);
+		return;
+	}
+
+	if (!PageWorkingset(page)) {
+		SetPageWorkingset(page);
+		return;
+	}
+
+	/* see the comment on MAX_NR_TIERS */
+	do {
+		old_flags = READ_ONCE(page->flags);
+		new_flags = old_flags & LRU_REFS_MASK;
+		if (new_flags == LRU_REFS_MASK)
+			break;
+
+		new_flags += BIT(LRU_REFS_PGOFF);
+		new_flags |= old_flags & ~LRU_REFS_MASK;
+	} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
+}
+#else
+static void page_inc_refs(struct page *page)
+{
+}
+#endif /* CONFIG_LRU_GEN */
+
 /*
  * Mark a page as having seen activity.
  *
@@ -368,9 +403,21 @@ static void __lru_cache_activate_page(struct page *page)
 void mark_page_accessed(struct page *page)
 {
 	page = compound_head(page);
-	if (!PageActive(page) && !PageUnevictable(page) &&
-			PageReferenced(page)) {
 
+	if (lru_gen_enabled()) {
+		page_inc_refs(page);
+		return;
+	}
+
+	if (!PageReferenced(page)) {
+		SetPageReferenced(page);
+	} else if (PageUnevictable(page)) {
+		/*
+		 * Unevictable pages are on the "LRU_UNEVICTABLE" list. But,
+		 * this list is never rotated or maintained, so marking an
+		 * evictable page accessed has no effect.
+		 */
+	} else if (!PageActive(page)) {
 		/*
 		 * If the page is on the LRU, queue it for activation via
 		 * activate_page_pvecs. Otherwise, assume the page is on a
@@ -384,8 +431,6 @@ void mark_page_accessed(struct page *page)
 		ClearPageReferenced(page);
 		if (page_is_file_cache(page))
 			workingset_activation(page);
-	} else if (!PageReferenced(page)) {
-		SetPageReferenced(page);
 	}
 	if (page_is_idle(page))
 		clear_page_idle(page);
