@@ -1749,13 +1749,12 @@ enum compact_result try_to_compact_pages(gfp_t gfp_mask, unsigned int order,
 		enum compact_priority prio)
 {
 	int may_enter_fs = gfp_mask & __GFP_FS;
-	int may_perform_io = gfp_mask & __GFP_IO;
 	struct zoneref *z;
 	struct zone *zone;
 	enum compact_result rc = COMPACT_SKIPPED;
 
 	/* Check if the GFP flags allow compaction */
-	if (!may_enter_fs || !may_perform_io)
+	if (!may_enter_fs || !gfp_compaction_allowed(gfp_mask))
 		return COMPACT_SKIPPED;
 
 	trace_mm_compaction_try_to_compact_pages(order, gfp_mask, prio);
