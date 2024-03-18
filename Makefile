@@ -817,6 +817,9 @@ KBUILD_CFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march
 KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march=armv8.2-a+crc+crypto
 endif
 
+KBUILD_CFLAGS  += -ftrivial-auto-var-init=zero
+KBUILD_CFLAGS  += $(call cc-option, -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang)
+
 ifdef CONFIG_CC_WERROR
 KBUILD_CFLAGS	+= -Werror
 endif
