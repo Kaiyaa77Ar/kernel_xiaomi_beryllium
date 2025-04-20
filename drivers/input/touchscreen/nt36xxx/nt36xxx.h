@@ -58,7 +58,12 @@
 #else
 #define NVT_LOG(fmt, args...)    pr_debug("[%s] %s %d: " fmt, NVT_I2C_NAME, __func__, __LINE__, ##args)
 #endif
+
+#if NVT_DEBUG
 #define NVT_ERR(fmt, args...)    pr_err("[%s] %s %d: " fmt, NVT_I2C_NAME, __func__, __LINE__, ##args)
+#else
+#define NVT_ERR(fmt, args...)    pr_debug("[%s] %s %d: " fmt, NVT_I2C_NAME, __func__, __LINE__, ##args)
+#endif
 
 //---Input device info.---
 #define NVT_TS_NAME "NVTCapacitiveTouchScreen"
