@@ -559,7 +559,7 @@ static int battery_supply_callback(struct notifier_block *nb,
 {
 	struct power_supply *psy = data;
 
-	if (strcmp(psy->desc->name, "battery"))
+	if (strcmp(psy->desc->name, "bms"))
 		return NOTIFY_OK;
 	schedule_work(&bcl_perph->soc_eval_work);
 
@@ -617,7 +617,7 @@ static void bcl_probe_soc(struct platform_device *pdev)
 				"google,bat-power-supply",
 				&bat_psy_name);
 	if (ret)
-		bat_psy_name = "battery";
+		bat_psy_name = "bms";
 
 	soc_data = &bcl_perph->param[BCL_SOC_MONITOR];
 	mutex_init(&soc_data->state_trans_lock);
