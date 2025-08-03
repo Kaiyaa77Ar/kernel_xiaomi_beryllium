@@ -160,6 +160,13 @@ extern int mmap_rnd_compat_bits __read_mostly;
 
 extern int sysctl_max_map_count;
 
+extern int sysctl_workingset_protection;
+extern int sysctl_anon_min_ratio;
+extern int sysctl_clean_low_ratio;
+extern int sysctl_clean_min_ratio;
+int vm_workingset_protection_update_handler(struct ctl_table *, int,
+					    void __user *, size_t *, loff_t *);
+
 extern unsigned long sysctl_user_reserve_kbytes;
 extern unsigned long sysctl_admin_reserve_kbytes;
 

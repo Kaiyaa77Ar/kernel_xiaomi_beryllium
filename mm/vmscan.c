@@ -120,6 +120,15 @@ struct scan_control {
 	/* The file pages on the current node are dangerously low */
 	unsigned int file_is_tiny:1;
 
+	/* The anonymous pages on the current node are below vm.anon_min_ratio */
+	unsigned int anon_below_min:1;
+
+	/* The clean file pages on the current node are below vm.clean_low_ratio */
+	unsigned int clean_below_low:1;
+
+	/* The clean file pages on the current node are below vm.clean_min_ratio */
+	unsigned int clean_below_min:1;
+
 #ifdef CONFIG_LRU_GEN
 	/* help kswapd make better choices among multiple memcgs */
 	unsigned int memcgs_need_aging:1;
@@ -166,6 +175,14 @@ struct scan_control {
  * From 0 .. 100.  Higher means more swappy.
  */
 int vm_swappiness = 60;
+int sysctl_workingset_protection __read_mostly = 0;
+int sysctl_anon_min_ratio __read_mostly = CONFIG_ANON_MIN_RATIO;
+int sysctl_clean_low_ratio __read_mostly = CONFIG_CLEAN_LOW_RATIO;
+int sysctl_clean_min_ratio __read_mostly = CONFIG_CLEAN_MIN_RATIO;
+static unsigned long sysctl_anon_min_ratio_kb __read_mostly = 0;
+static unsigned long sysctl_clean_low_ratio_kb __read_mostly = 0;
+static unsigned long sysctl_clean_min_ratio_kb __read_mostly = 0;
+static unsigned long workingset_protection_prev_totalram __read_mostly = 0;
 /*
  * The total number of pages which are beyond the high watermark within all
  * zones.
@@ -1008,6 +1025,10 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 			goto cull_mlocked;
 
 		if (!sc->may_unmap && page_mapped(page))
+			goto keep_locked;
+
+		if (page_is_file_cache(page) ? sc->clean_below_min :
+				(sc->anon_below_min && !sc->clean_below_min))
 			goto keep_locked;
 
 		/* page_update_gen() tried to promote this page? */
@@ -2322,6 +2343,15 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	}
 
 	/*
+	 * Force-scan anon if clean file pages is under vm.clean_low_ratio
+	 * or vm.clean_min_ratio.
+	 */
+	if (sc->clean_below_low || sc->clean_below_min) {
+		scan_balance = SCAN_ANON;
+		goto out;
+	}
+
+	/*
 	 * If there is enough inactive page cache, i.e. if the size of the
 	 * inactive list is greater than that of the active list *and* the
 	 * inactive list actually has some pages to scan on this priority, we
@@ -2429,8 +2459,96 @@ out:
 			BUG();
 		}
 
+		/*
+		 * Hard protection of the working set.
+		 * Don't reclaim anon/file pages when the amount is
+		 * below the watermark of the same type.
+		 */
+		if (file ? sc->clean_below_min : sc->anon_below_min)
+			scan = 0;
+
 		*lru_pages += size;
 		nr[lru] = scan;
+	}
+}
+
+int vm_workingset_protection_update_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+
+	if (ret || !write)
+		return ret;
+
+	workingset_protection_prev_totalram = 0;
+
+	return 0;
+}
+
+static void prepare_workingset_protection(pg_data_t *pgdat, struct scan_control *sc)
+{
+	unsigned long node_mem_total;
+	struct sysinfo i;
+
+	if (!sysctl_workingset_protection) {
+		sc->anon_below_min = 0;
+		sc->clean_below_low = 0;
+		sc->clean_below_min = 0;
+		return;
+	}
+
+	if (sysctl_anon_min_ratio || sysctl_clean_low_ratio ||
+	    sysctl_clean_min_ratio) {
+#ifdef CONFIG_NUMA
+		si_meminfo_node(&i, pgdat->node_id);
+#else
+		si_meminfo(&i);
+#endif
+		node_mem_total = i.totalram;
+
+		if (workingset_protection_prev_totalram != node_mem_total) {
+			sysctl_anon_min_ratio_kb =
+				node_mem_total * sysctl_anon_min_ratio / 100;
+			sysctl_clean_low_ratio_kb =
+				node_mem_total * sysctl_clean_low_ratio / 100;
+			sysctl_clean_min_ratio_kb =
+				node_mem_total * sysctl_clean_min_ratio / 100;
+			workingset_protection_prev_totalram = node_mem_total;
+		}
+	}
+
+	if (sysctl_anon_min_ratio) {
+		unsigned long reclaimable_anon;
+
+		reclaimable_anon =
+			node_page_state(pgdat, NR_ACTIVE_ANON) +
+			node_page_state(pgdat, NR_INACTIVE_ANON) +
+			node_page_state(pgdat, NR_ISOLATED_ANON);
+
+		sc->anon_below_min =
+			reclaimable_anon < sysctl_anon_min_ratio_kb;
+	} else {
+		sc->anon_below_min = 0;
+	}
+
+	if (sysctl_clean_low_ratio || sysctl_clean_min_ratio) {
+		unsigned long reclaimable_file, dirty, clean;
+
+		reclaimable_file =
+			node_page_state(pgdat, NR_ACTIVE_FILE) +
+			node_page_state(pgdat, NR_INACTIVE_FILE) +
+			node_page_state(pgdat, NR_ISOLATED_FILE);
+		dirty = node_page_state(pgdat, NR_FILE_DIRTY);
+		if (reclaimable_file > dirty)
+			clean = reclaimable_file - dirty;
+		else
+			clean = 0;
+
+		sc->clean_below_low = clean < sysctl_clean_low_ratio_kb;
+		sc->clean_below_min = clean < sysctl_clean_min_ratio_kb;
+	} else {
+		sc->clean_below_low = 0;
+		sc->clean_below_min = 0;
 	}
 }
 
@@ -4298,11 +4416,25 @@ static int get_tier_idx(struct lruvec *lruvec, int type)
 	return tier - 1;
 }
 
-static int get_type_to_scan(struct lruvec *lruvec, int swappiness, int *tier_idx)
+static int get_type_to_scan(struct lruvec *lruvec, struct scan_control *sc,
+			      int swappiness, int *tier_idx)
 {
 	int type, tier;
 	struct ctrl_pos sp, pv;
 	int gain[ANON_AND_FILE] = { swappiness, 200 - swappiness };
+
+	if (sc->clean_below_min) {
+		*tier_idx = get_tier_idx(lruvec, LRU_GEN_ANON);
+		return LRU_GEN_ANON;
+	}
+	if (sc->anon_below_min) {
+		*tier_idx = get_tier_idx(lruvec, LRU_GEN_FILE);
+		return LRU_GEN_FILE;
+	}
+	if (sc->clean_below_low) {
+		*tier_idx = get_tier_idx(lruvec, LRU_GEN_ANON);
+		return LRU_GEN_ANON;
+	}
 
 	/*
 	 * Compare the first tier of anon with that of file to determine which
@@ -4349,7 +4481,7 @@ static int isolate_pages(struct lruvec *lruvec, struct scan_control *sc, int swa
 	else if (swappiness == 200)
 		type = LRU_GEN_ANON;
 	else
-		type = get_type_to_scan(lruvec, swappiness, &tier);
+		type = get_type_to_scan(lruvec, sc, swappiness, &tier);
 
 	for (i = !swappiness; i < ANON_AND_FILE; i++) {
 		if (tier < 0)
@@ -4564,6 +4696,12 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc
 	unsigned long scanned = 0;
 	unsigned long reclaimed = sc->nr_reclaimed;
 	DEFINE_MAX_SEQ(lruvec);
+
+	prepare_workingset_protection(lruvec_pgdat(lruvec), sc);
+
+	if (sysctl_workingset_protection && sc->clean_below_min &&
+	    !sc->may_swap)
+		return;
 
 	lru_add_drain();
 
@@ -5482,6 +5620,8 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 	struct reclaim_state *reclaim_state = current->reclaim_state;
 	unsigned long nr_reclaimed, nr_scanned;
 	bool reclaimable = false;
+
+	prepare_workingset_protection(pgdat, sc);
 
 	do {
 		struct mem_cgroup *root = sc->target_mem_cgroup;
