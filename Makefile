@@ -806,6 +806,12 @@ endif
 ifeq ($(cc-name),clang)
 KBUILD_CFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crc+crypto
 KBUILD_AFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crc+crypto
+# Enable hot cold split optimization
+KBUILD_CFLAGS	+= -mllvm -hot-cold-split=true
+# Enable MLGO optimizations for register allocation
+KBUILD_CFLAGS	+= -mllvm -regalloc-enable-advisor=release
+KBUILD_LDFLAGS	+= -mllvm -regalloc-enable-advisor=release
+KBUILD_LDFLAGS	+= -mllvm -enable-ml-inliner=release
 else
 KBUILD_CFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march=armv8.2-a+crc+crypto
 KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march=armv8.2-a+crc+crypto
