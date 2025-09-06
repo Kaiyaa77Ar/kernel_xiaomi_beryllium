@@ -26,6 +26,8 @@ $(warning $(ce-obj-y) $(ce-obj-m))
 endif
 endif
 
+ccflags-y := -O3
+
 aes-arm-y	:= aes-cipher-core.o aes-cipher-glue.o
 aes-arm-bs-y	:= aes-armv4.o aesbs-core.o aesbs-glue.o
 sha1-arm-y	:= sha1-armv4-large.o sha1_glue.o
