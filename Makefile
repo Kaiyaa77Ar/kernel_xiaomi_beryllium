@@ -733,12 +733,11 @@ endif
 
 ifdef CONFIG_LTO_CLANG
 ifdef CONFIG_THINLTO
-lto-clang-flags := -flto=thin -fsplit-lto-unit
+lto-clang-flags := -flto=thin -fsplit-lto-unit -fvisibility=default
 KBUILD_LDFLAGS	+= --thinlto-cache-dir=$(extmod-prefix).thinlto-cache
 else
-lto-clang-flags := -flto
+lto-clang-flags := -flto -fvisibility=hidden
 endif
-lto-clang-flags += -fvisibility=default
 
 # Limit inlining across translation units to reduce binary size
 LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
