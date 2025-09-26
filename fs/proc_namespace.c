@@ -19,7 +19,6 @@
 #include "internal.h"
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-extern bool susfs_is_current_ksu_domain(void);
 bool susfs_hide_sus_mnts_for_all_procs = true; // hide sus mounts for all processes by default
 #endif
 
@@ -108,9 +107,9 @@ static int show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 	int err;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (unlikely(r->mnt_id >= DEFAULT_SUS_MNT_ID) &&
-		(susfs_hide_sus_mnts_for_all_procs || !susfs_is_current_ksu_domain()))
+	if (susfs_hide_sus_mnts_for_all_procs && r->mnt_id >= DEFAULT_SUS_MNT_ID) {
 		return 0;
+	}
 #endif
 
 	if (sb->s_op->show_devname) {
@@ -150,9 +149,9 @@ static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 	int err;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (unlikely(r->mnt_id >= DEFAULT_SUS_MNT_ID) &&
-		(susfs_hide_sus_mnts_for_all_procs || !susfs_is_current_ksu_domain()))
+	if (susfs_hide_sus_mnts_for_all_procs && r->mnt_id >= DEFAULT_SUS_MNT_ID) {
 		return 0;
+	}
 #endif
 
 	seq_printf(m, "%i %i %u:%u ", r->mnt_id, r->mnt_parent->mnt_id,
@@ -220,9 +219,9 @@ static int show_vfsstat(struct seq_file *m, struct vfsmount *mnt)
 	int err;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (unlikely(r->mnt_id >= DEFAULT_SUS_MNT_ID) &&
-		(susfs_hide_sus_mnts_for_all_procs || !susfs_is_current_ksu_domain()))
+	if (susfs_hide_sus_mnts_for_all_procs && r->mnt_id >= DEFAULT_SUS_MNT_ID) {
 		return 0;
+	}
 #endif
 
 	/* device */
