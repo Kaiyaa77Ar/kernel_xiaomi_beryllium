@@ -20,6 +20,11 @@ ghash-ce-y := ghash-ce-glue.o ghash-ce-core.o
 obj-$(CONFIG_CRYPTO_AES_ARM64_CE) += aes-ce-cipher.o
 aes-ce-cipher-y := aes-ce-core.o aes-ce-glue.o
 CFLAGS_aes-ce-cipher.o += $(DISABLE_LTO)
+ifeq ($(cc-name),clang)
+CFLAGS_aes-ce-cipher.o += -mcpu=cortex-a55 -march=armv8.2-a+crypto
+else
+CFLAGS_aes-ce-cipher.o += -mcpu=cortex-a75.cortex-a55+crypto
+endif
 
 obj-$(CONFIG_CRYPTO_AES_ARM64_CE_CCM) += aes-ce-ccm.o
 aes-ce-ccm-y := aes-ce-ccm-glue.o aes-ce-ccm-core.o
