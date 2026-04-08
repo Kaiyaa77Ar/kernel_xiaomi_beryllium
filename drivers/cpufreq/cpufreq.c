@@ -1744,6 +1744,7 @@ void cpufreq_suspend(void)
 	if (!cpufreq_driver)
 		return;
 
+	get_online_cpus();
 	if (!has_target() && !cpufreq_driver->suspend)
 		goto suspend;
 
@@ -1763,6 +1764,7 @@ void cpufreq_suspend(void)
 
 suspend:
 	cpufreq_suspended = true;
+	put_online_cpus();
 }
 
 /**
