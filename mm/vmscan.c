@@ -171,11 +171,12 @@ struct scan_control {
 #define prefetchw_prev_lru_page(_page, _base, _field) do { } while (0)
 #endif
 
+
 /*
  * From 0 .. 100.  Higher means more swappy.
  */
 int vm_swappiness = 60;
-int sysctl_workingset_protection __read_mostly = IS_ENABLED(CONFIG_WORKINGSET_PROTECTION);
+int sysctl_workingset_protection __read_mostly = 1;
 int sysctl_anon_min_ratio __read_mostly = CONFIG_ANON_MIN_RATIO;
 int sysctl_clean_low_ratio __read_mostly = CONFIG_CLEAN_LOW_RATIO;
 int sysctl_clean_min_ratio __read_mostly = CONFIG_CLEAN_MIN_RATIO;
