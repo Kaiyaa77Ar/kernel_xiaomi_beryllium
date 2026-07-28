@@ -28,9 +28,13 @@
 
 static int zero;
 static int one = 1;
+#ifdef CONFIG_NET_L3_MASTER_DEV
 static int three = 3;
+#endif
 static int four = 4;
+#ifdef CONFIG_NET_L3_MASTER_DEV
 static int hundred = 100;
+#endif
 static int thousand = 1000;
 static int gso_max_segs = GSO_MAX_SEGS;
 static int tcp_retr1_max = 255;
