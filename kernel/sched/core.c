@@ -94,6 +94,10 @@
 #include "../smpboot.h"
 #include "../time/tick-internal.h"
 
+#ifdef CONFIG_SCHED_BORE
+#include <linux/sched/bore.h>
+#endif // CONFIG_SCHED_BORE
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 #include "walt.h"
@@ -2338,6 +2342,9 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->se.prev_sum_exec_runtime	= 0;
 	p->se.nr_migrations		= 0;
 	p->se.vruntime			= 0;
+#ifdef CONFIG_SCHED_BORE
+	sched_fork_bore(p);
+#endif // CONFIG_SCHED_BORE
 	p->last_sleep_ts		= 0;
 	p->last_cpu_selected_ts		= 0;
 
@@ -2590,6 +2597,13 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	put_cpu();
 	return 0;
 }
+
+#ifdef CONFIG_SCHED_BORE
+void sched_post_fork(struct task_struct *p)
+{
+	sched_post_fork_bore(p);
+}
+#endif // CONFIG_SCHED_BORE
 
 u64 to_ratio(u64 period, u64 runtime)
 {
@@ -8299,6 +8313,10 @@ void __init sched_init(void)
 
 	for (i = 0; i < WAIT_TABLE_SIZE; i++)
 		init_waitqueue_head(bit_wait_table + i);
+
+#ifdef CONFIG_SCHED_BORE
+	sched_init_bore();
+#endif // CONFIG_SCHED_BORE
 
 	sched_boost_parse_dt();
 	init_clusters();
