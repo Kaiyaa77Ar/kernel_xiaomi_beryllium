@@ -792,7 +792,7 @@ static int match(const char *sym, const char * const pat[])
 			const char *here;
 			char *bare = strndup(p + 1, strlen(p) - 2);
 
-			here = strstr(sym, bare);
+			here = (char *)strstr(sym, bare);
 			free(bare);
 			if (here != NULL)
 				return 1;
