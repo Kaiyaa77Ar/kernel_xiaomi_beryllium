@@ -703,6 +703,15 @@ LLVM_NM		:= llvm-nm
 export LLVM_AR LLVM_NM
 endif
 
+ifeq ($(cc-name),clang)
+else
+GCC_FLAGS	:= -fgraphite \
+		   -fgraphite-identity \
+		   -floop-nest-optimize \
+		   -fno-semantic-interposition
+KBUILD_CFLAGS	+= $(GCC_FLAGS)
+endif
+
 ifdef CONFIG_LTO_GCC
 LTO_CFLAGS	:= -flto -flto=jobserver -fno-fat-lto-objects \
 		   -fuse-linker-plugin -fwhole-program
