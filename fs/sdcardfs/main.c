@@ -265,7 +265,8 @@ static int sdcardfs_read_super(struct vfsmount *mnt, struct super_block *sb,
 	struct super_block *lower_sb;
 	struct path lower_path;
 	struct sdcardfs_sb_info *sb_info;
-	struct sdcardfs_vfsmount_options *mnt_opt = mnt->data;
+	struct sdcardfs_vfsmount_options stack_opts;
+	struct sdcardfs_vfsmount_options *mnt_opt = mnt ? mnt->data : &stack_opts;
 	struct inode *inode;
 
 	pr_info("sdcardfs version 2.0\n");
@@ -412,25 +413,17 @@ static int __sdcardfs_fill_super(
 		sb, priv->dev_name, priv->raw_data, silent);
 }
 
-static struct dentry *sdcardfs_mount(struct vfsmount *mnt,
-		struct file_system_type *fs_type, int flags,
-			    const char *dev_name, void *raw_data)
+static struct dentry *sdcardfs_mount(struct file_system_type *fs_type,
+		int flags, const char *dev_name, void *raw_data)
 {
 	struct sdcardfs_mount_private priv = {
-		.mnt = mnt,
+		.mnt = NULL,
 		.dev_name = dev_name,
 		.raw_data = raw_data
 	};
 
 	return mount_nodev(fs_type, flags,
 		&priv, __sdcardfs_fill_super);
-}
-
-static struct dentry *sdcardfs_mount_wrn(struct file_system_type *fs_type,
-		    int flags, const char *dev_name, void *raw_data)
-{
-	WARN(1, "sdcardfs does not support mount. Use mount2.\n");
-	return ERR_PTR(-EINVAL);
 }
 
 void *sdcardfs_alloc_mnt_data(void)
@@ -454,8 +447,7 @@ void sdcardfs_kill_sb(struct super_block *sb)
 static struct file_system_type sdcardfs_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= SDCARDFS_NAME,
-	.mount		= sdcardfs_mount_wrn,
-	.mount2		= sdcardfs_mount,
+	.mount		= sdcardfs_mount,
 	.alloc_mnt_data = sdcardfs_alloc_mnt_data,
 	.kill_sb	= sdcardfs_kill_sb,
 	.fs_flags	= 0,
