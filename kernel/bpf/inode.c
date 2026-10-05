@@ -17,6 +17,7 @@
 #include <linux/mount.h>
 #include <linux/namei.h>
 #include <linux/fs.h>
+#include <linux/fs_context.h>
 #include <linux/kdev_t.h>
 #include <linux/filter.h>
 #include <linux/bpf.h>
@@ -533,7 +534,7 @@ static const struct super_operations bpf_super_ops = {
 	.evict_inode	= bpf_evict_inode,
 };
 
-static int bpf_fill_super(struct super_block *sb, void *data, int silent)
+static int bpf_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	static struct tree_descr bpf_rfiles[] = { { "" } };
 	struct inode *inode;
@@ -553,16 +554,28 @@ static int bpf_fill_super(struct super_block *sb, void *data, int silent)
 	return 0;
 }
 
-static struct dentry *bpf_mount(struct file_system_type *type, int flags,
-				const char *dev_name, void *data)
+static int bpf_get_tree(struct fs_context *fc)
 {
-	return mount_nodev(type, flags, data, bpf_fill_super);
+	return get_tree_nodev(fc, bpf_fill_super);
+}
+
+static const struct fs_context_operations bpf_context_ops = {
+	.get_tree	= bpf_get_tree,
+};
+
+/*
+ * Set up the filesystem mount context.
+ */
+static int bpf_init_fs_context(struct fs_context *fc)
+{
+	fc->ops = &bpf_context_ops;
+	return 0;
 }
 
 static struct file_system_type bpf_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "bpf",
-	.mount		= bpf_mount,
+	.init_fs_context = bpf_init_fs_context,
 	.kill_sb	= kill_litter_super,
 };
 
