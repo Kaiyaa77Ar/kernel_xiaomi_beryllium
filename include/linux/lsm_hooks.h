@@ -104,15 +104,12 @@
  *	@flags contains the mount flags.
  *	@data contains the filesystem-specific data.
  *	Return 0 if permission is granted.
- * @sb_copy_data:
- *	Allow mount option data to be copied prior to parsing by the filesystem,
+ * @sb_eat_lsm_opts:
+ *	Copy and parse mount option data prior to parsing by the filesystem,
  *	so that the security module can extract security-specific mount
  *	options cleanly (a filesystem may modify the data e.g. with strsep()).
- *	This also allows the original mount data to be stripped of security-
- *	specific options to avoid having to make filesystems aware of them.
- *	@type the type of filesystem being mounted.
  *	@orig the original mount data copied from userspace.
- *	@copy copied data which will be passed to the security module.
+ *	@opts binary data structure containing all lsm mount data.
  *	Returns 0 if the copy was successful.
  * @sb_remount:
  *	Extracts security system specific mount options and verifies no changes
@@ -1394,7 +1391,7 @@ union security_list_options {
 
 	int (*sb_alloc_security)(struct super_block *sb);
 	void (*sb_free_security)(struct super_block *sb);
-	int (*sb_copy_data)(char *orig, char *copy);
+	int (*sb_eat_lsm_opts)(char *orig, struct security_mnt_opts *opts);
 	int (*sb_remount)(struct super_block *sb, struct security_mnt_opts *opts);
 	int (*sb_kern_mount)(struct super_block *sb);
 	int (*sb_show_options)(struct seq_file *m, struct super_block *sb);
@@ -1716,7 +1713,7 @@ struct security_hook_heads {
 	struct list_head bprm_committed_creds;
 	struct list_head sb_alloc_security;
 	struct list_head sb_free_security;
-	struct list_head sb_copy_data;
+	struct list_head sb_eat_lsm_opts;
 	struct list_head sb_remount;
 	struct list_head sb_kern_mount;
 	struct list_head sb_show_options;

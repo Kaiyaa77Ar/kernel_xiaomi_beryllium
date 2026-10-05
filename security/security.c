@@ -280,16 +280,7 @@ void security_sb_free(struct super_block *sb)
 
 int security_sb_eat_lsm_opts(char *options, struct security_mnt_opts *opts)
 {
-	char *s = (char *)get_zeroed_page(GFP_KERNEL);
-	int err;
-
-	if (!s)
-		return -ENOMEM;
-	err = call_int_hook(sb_copy_data, 0, options, s);
-	if (!err)
-		err = call_int_hook(sb_parse_opts_str, 0, s, opts);
-	free_page((unsigned long)s);
-	return err;
+	return call_int_hook(sb_eat_lsm_opts, 0, options, opts);
 }
 EXPORT_SYMBOL(security_sb_eat_lsm_opts);
 
@@ -1680,7 +1671,7 @@ struct security_hook_heads security_hook_heads __lsm_ro_after_init = {
 		LIST_HEAD_INIT(security_hook_heads.sb_alloc_security),
 	.sb_free_security =
 		LIST_HEAD_INIT(security_hook_heads.sb_free_security),
-	.sb_copy_data =	LIST_HEAD_INIT(security_hook_heads.sb_copy_data),
+	.sb_eat_lsm_opts =	LIST_HEAD_INIT(security_hook_heads.sb_eat_lsm_opts),
 	.sb_remount =	LIST_HEAD_INIT(security_hook_heads.sb_remount),
 	.sb_kern_mount =
 		LIST_HEAD_INIT(security_hook_heads.sb_kern_mount),
