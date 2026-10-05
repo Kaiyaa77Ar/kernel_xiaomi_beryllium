@@ -141,6 +141,11 @@ extern int get_tree_single(struct fs_context *fc,
 
 #define logfc(FC, FMT, ...) pr_notice(FMT, ## __VA_ARGS__)
 
+extern int get_tree_bdev(struct fs_context *fc,
+			       int (*fill_super)(struct super_block *sb,
+						 struct fs_context *fc));
+
+
 /**
  * infof - Store supplementary informational message
  * @fc: The context in which to log the informational message
