@@ -147,9 +147,11 @@
  *	Copy all security options from a given superblock to another
  *	@oldsb old superblock which contain information to clone
  *	@newsb new superblock which needs filled in
- * @sb_parse_opts_str:
- *	Parse a string of security data filling in the opts structure
- *	@options string containing all mount options known by the LSM
+ * @sb_add_mnt_opt:
+ *	Add a security mount option to the opts structure
+ *	@option name of the option
+ *	@val value of the option
+ *	@len length of the value
  *	@mnt_opts binary data structure usable by the LSM
  * @dentry_init_security:
  *	Compute a context for a dentry as the inode is not yet available
@@ -1419,7 +1421,8 @@ union security_list_options {
 				unsigned long *set_kern_flags);
 	int (*sb_clone_mnt_opts)(const struct super_block *oldsb,
 					struct super_block *newsb);
-	int (*sb_parse_opts_str)(char *options, void **mnt_opts);
+	int (*sb_add_mnt_opt)(const char *option, const char *val,
+				int len, void **mnt_opts);
 	int (*dentry_init_security)(struct dentry *dentry, int mode,
 					const struct qstr *name, void **ctx,
 					u32 *ctxlen);
@@ -1738,7 +1741,7 @@ struct security_hook_heads {
 	struct list_head sb_pivotroot;
 	struct list_head sb_set_mnt_opts;
 	struct list_head sb_clone_mnt_opts;
-	struct list_head sb_parse_opts_str;
+	struct list_head sb_add_mnt_opt;
 	struct list_head dentry_init_security;
 	struct list_head dentry_create_files_as;
 #ifdef CONFIG_SECURITY_PATH
