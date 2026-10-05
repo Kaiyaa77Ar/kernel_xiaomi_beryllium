@@ -17,6 +17,7 @@ struct linux_binprm;
 struct path;
 struct mount;
 struct shrink_control;
+struct fs_context;
 
 /*
  * block_dev.c
@@ -48,6 +49,12 @@ extern int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
  * char_dev.c
  */
 extern void __init chrdev_init(void);
+
+/*
+ * fs_context.c
+ */
+extern int legacy_get_tree(struct fs_context *fc);
+extern int parse_monolithic_mount_data(struct fs_context *, void *);
 
 /*
  * namei.c
@@ -89,8 +96,6 @@ extern struct file *get_empty_filp(void);
  */
 extern int do_remount_sb(struct super_block *, int, void *, int);
 extern bool trylock_super(struct super_block *sb);
-extern struct dentry *mount_fs(struct file_system_type *,
-			       int, const char *, void *);
 extern struct super_block *user_get_super(dev_t);
 
 /*
