@@ -585,9 +585,9 @@ static int sdcardfs_permission(struct vfsmount *mnt, struct inode *inode, int ma
 	}
 
 	tmp.i_uid = make_kuid(&init_user_ns, top->d_uid);
-	tmp.i_gid = make_kgid(&init_user_ns, get_gid(mnt, inode->i_sb, top));
+	tmp.i_gid = make_kgid(&init_user_ns, get_gid(inode->i_sb, top));
 	tmp.i_mode = (inode->i_mode & S_IFMT)
-			| get_mode(mnt, SDCARDFS_I(inode), top);
+			| get_mode(SDCARDFS_I(inode), top);
 	data_put(top);
 	spin_unlock(&SDCARDFS_I(inode)->top_alias_lock);
 
@@ -640,9 +640,9 @@ static int sdcardfs_setattr(struct vfsmount *mnt, struct dentry *dentry, struct 
 	 */
 	copy_attrs(&tmp, inode);
 	tmp.i_uid = make_kuid(&init_user_ns, top->d_uid);
-	tmp.i_gid = make_kgid(&init_user_ns, get_gid(mnt, dentry->d_sb, top));
+	tmp.i_gid = make_kgid(&init_user_ns, get_gid(dentry->d_sb, top));
 	tmp.i_mode = (inode->i_mode & S_IFMT)
-			| get_mode(mnt, SDCARDFS_I(inode), top);
+			| get_mode(SDCARDFS_I(inode), top);
 	tmp.i_size = i_size_read(inode);
 	data_put(top);
 	tmp.i_sb = inode->i_sb;
@@ -752,10 +752,10 @@ static int sdcardfs_fillattr(struct vfsmount *mnt, struct inode *inode,
 
 	stat->dev = inode->i_sb->s_dev;
 	stat->ino = inode->i_ino;
-	stat->mode = (inode->i_mode  & S_IFMT) | get_mode(mnt, info, top);
+	stat->mode = (inode->i_mode  & S_IFMT) | get_mode(info, top);
 	stat->nlink = inode->i_nlink;
 	stat->uid = make_kuid(&init_user_ns, top->d_uid);
-	stat->gid = make_kgid(&init_user_ns, get_gid(mnt, sb, top));
+	stat->gid = make_kgid(&init_user_ns, get_gid(sb, top));
 	stat->rdev = inode->i_rdev;
 	stat->size = lower_stat->size;
 	stat->atime = lower_stat->atime;

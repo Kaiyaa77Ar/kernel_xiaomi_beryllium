@@ -220,6 +220,8 @@ struct sdcardfs_sb_info {
 	 * to sdcardfs_mount_options (Android 4.4 support)
 	 */
 	struct sdcardfs_mount_options options;
+	/* per-mount gid/mask: one sb per mount, so sb storage is exact */
+	struct sdcardfs_vfsmount_options vfsopts;
 	spinlock_t lock;	/* protects obbpath */
 	char *obbpath_s;
 	struct path obbpath;
@@ -403,12 +405,11 @@ static inline void set_top(struct sdcardfs_inode_info *info,
 	spin_unlock(&info->top_lock);
 }
 
-static inline int get_gid(struct vfsmount *mnt,
-		struct super_block *sb,
+static inline int get_gid(struct super_block *sb,
 		struct sdcardfs_inode_data *data)
 {
-	struct sdcardfs_vfsmount_options *vfsopts = mnt->data;
 	struct sdcardfs_sb_info *sbi = SDCARDFS_SB(sb);
+	struct sdcardfs_vfsmount_options *vfsopts = &sbi->vfsopts;
 
 	if (vfsopts->gid == AID_SDCARD_RW && !sbi->options.default_normal)
 		/* As an optimization, certain trusted system components only run
@@ -422,13 +423,13 @@ static inline int get_gid(struct vfsmount *mnt,
 		return multiuser_get_uid(data->userid, vfsopts->gid);
 }
 
-static inline int get_mode(struct vfsmount *mnt,
-		struct sdcardfs_inode_info *info,
+static inline int get_mode(struct sdcardfs_inode_info *info,
 		struct sdcardfs_inode_data *data)
 {
 	int owner_mode;
 	int filtered_mode;
-	struct sdcardfs_vfsmount_options *opts = mnt->data;
+	struct sdcardfs_vfsmount_options *opts =
+		&SDCARDFS_SB(info->vfs_inode.i_sb)->vfsopts;
 	int visible_mode = 0775 & ~opts->mask;
 
 

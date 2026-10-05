@@ -120,29 +120,11 @@ static int sdcardfs_remount_fs(struct super_block *sb, int *flags, char *options
 		pr_err("sdcardfs: remount flags 0x%x unsupported\n", *flags);
 		err = -EINVAL;
 	}
+	pr_info("Remount options were %s.\n", options);
+	err = parse_options_remount(sb, options, *flags & ~MS_SILENT,
+				    &SDCARDFS_SB(sb)->vfsopts);
 
 	return err;
-}
-
-static void *sdcardfs_clone_mnt_data(void *data)
-{
-	struct sdcardfs_vfsmount_options *opt = kmalloc(sizeof(struct sdcardfs_vfsmount_options), GFP_KERNEL);
-	struct sdcardfs_vfsmount_options *old = data;
-
-	if (!opt)
-		return NULL;
-	opt->gid = old->gid;
-	opt->mask = old->mask;
-	return opt;
-}
-
-static void sdcardfs_copy_mnt_data(void *data, void *newdata)
-{
-	struct sdcardfs_vfsmount_options *old = data;
-	struct sdcardfs_vfsmount_options *new = newdata;
-
-	old->gid = new->gid;
-	old->mask = new->mask;
 }
 
 /*
@@ -264,13 +246,18 @@ static int sdcardfs_show_options(struct seq_file *m, struct dentry *root)
 {
 	struct sdcardfs_sb_info *sbi = SDCARDFS_SB(root->d_sb);
 	struct sdcardfs_mount_options *opts = &sbi->options;
+	struct sdcardfs_vfsmount_options *vfsopts = &sbi->vfsopts;
 
 	if (opts->fs_low_uid != 0)
 		seq_printf(m, ",fsuid=%u", opts->fs_low_uid);
 	if (opts->fs_low_gid != 0)
 		seq_printf(m, ",fsgid=%u", opts->fs_low_gid);
+	if (vfsopts->gid != 0)
+		seq_printf(m, ",gid=%u", vfsopts->gid);
 	if (opts->multiuser)
 		seq_puts(m, ",multiuser");
+	if (vfsopts->mask)
+		seq_printf(m, ",mask=%u", vfsopts->mask);
 	if (opts->fs_user_id)
 		seq_printf(m, ",userid=%u", opts->fs_user_id);
 	if (opts->gid_derivation)
@@ -289,8 +276,6 @@ const struct super_operations sdcardfs_sops = {
 	.put_super	= sdcardfs_put_super,
 	.statfs		= sdcardfs_statfs,
 	.remount_fs	= sdcardfs_remount_fs,
-	.clone_mnt_data	= sdcardfs_clone_mnt_data,
-	.copy_mnt_data	= sdcardfs_copy_mnt_data,
 	.evict_inode	= sdcardfs_evict_inode,
 	.umount_begin	= sdcardfs_umount_begin,
 	.show_options	= sdcardfs_show_options,
