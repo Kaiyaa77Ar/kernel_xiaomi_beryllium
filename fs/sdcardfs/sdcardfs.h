@@ -45,8 +45,18 @@
 #include <linux/security.h>
 #include <linux/string.h>
 #include <linux/list.h>
-#include <linux/iversion.h>
 #include "multiuser.h"
+
+/* 4.9 iversion compatibility */
+static inline void inode_inc_iversion_raw(struct inode *inode)
+{
+	inode_inc_iversion(inode);
+}
+
+static inline void inode_set_iversion(struct inode *inode, u64 val)
+{
+	inode->i_version = val;
+}
 
 /* the file system name */
 #define SDCARDFS_NAME "sdcardfs"

@@ -293,7 +293,7 @@ static int __sdcardfs_fill_super(
 	list_add(&sb_info->list, &sdcardfs_super_list);
 	mutex_unlock(&sdcardfs_super_list_lock);
 
-	if (!(fc->sb_flags & SB_SILENT))
+	if (!(fc->sb_flags & MS_SILENT))
 		pr_info("sdcardfs: mounted on top of %s type %s\n",
 				dev_name, lower_sb->s_type->name);
 	goto out; /* all is well */
