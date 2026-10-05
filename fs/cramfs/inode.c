@@ -19,6 +19,7 @@
 #include <linux/init.h>
 #include <linux/string.h>
 #include <linux/blkdev.h>
+#include <linux/fs_context.h>
 #include <linux/slab.h>
 #include <linux/vfs.h>
 #include <linux/mutex.h>
@@ -248,20 +249,21 @@ static void cramfs_kill_sb(struct super_block *sb)
 	kfree(sbi);
 }
 
-static int cramfs_remount(struct super_block *sb, int *flags, char *data)
+static int cramfs_reconfigure(struct fs_context *fc)
 {
-	sync_filesystem(sb);
-	*flags |= MS_RDONLY;
+	sync_filesystem(fc->root->d_sb);
+	fc->sb_flags |= MS_RDONLY;
 	return 0;
 }
 
-static int cramfs_fill_super(struct super_block *sb, void *data, int silent)
+static int cramfs_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	int i;
 	struct cramfs_super super;
 	unsigned long root_offset;
 	struct cramfs_sb_info *sbi;
 	struct inode *root;
+	bool silent = fc->sb_flags & MS_SILENT;
 
 	sb->s_flags |= MS_RDONLY;
 
@@ -284,7 +286,7 @@ static int cramfs_fill_super(struct super_block *sb, void *data, int silent)
 		/* check for wrong endianness */
 		if (super.magic == CRAMFS_MAGIC_WEND) {
 			if (!silent)
-				pr_err("wrong endianness\n");
+				errorf(fc, "cramfs: wrong endianness");
 			return -EINVAL;
 		}
 
@@ -294,22 +296,22 @@ static int cramfs_fill_super(struct super_block *sb, void *data, int silent)
 		mutex_unlock(&read_mutex);
 		if (super.magic != CRAMFS_MAGIC) {
 			if (super.magic == CRAMFS_MAGIC_WEND && !silent)
-				pr_err("wrong endianness\n");
+				errorf(fc, "cramfs: wrong endianness");
 			else if (!silent)
-				pr_err("wrong magic\n");
+				errorf(fc, "cramfs: wrong magic");
 			return -EINVAL;
 		}
 	}
 
 	/* get feature flags first */
 	if (super.flags & ~CRAMFS_SUPPORTED_FLAGS) {
-		pr_err("unsupported filesystem features\n");
+		errorf(fc, "cramfs: unsupported filesystem features");
 		return -EINVAL;
 	}
 
 	/* Check that the root inode is in a sane state */
 	if (!S_ISDIR(super.root.mode)) {
-		pr_err("root is not a directory\n");
+		errorf(fc, "cramfs: root is not a directory");
 		return -EINVAL;
 	}
 	/* correct strange, hard-coded permissions of mkcramfs */
@@ -328,12 +330,12 @@ static int cramfs_fill_super(struct super_block *sb, void *data, int silent)
 	sbi->magic = super.magic;
 	sbi->flags = super.flags;
 	if (root_offset == 0)
-		pr_info("empty filesystem");
+		infof(fc, "cramfs: empty filesystem");
 	else if (!(super.flags & CRAMFS_FLAG_SHIFTED_ROOT_OFFSET) &&
 		 ((root_offset != sizeof(struct cramfs_super)) &&
 		  (root_offset != 512 + sizeof(struct cramfs_super))))
 	{
-		pr_err("bad root offset %lu\n", root_offset);
+		errorf(fc, "cramfs: bad root offset %lu", root_offset);
 		return -EINVAL;
 	}
 
@@ -570,20 +572,32 @@ static const struct inode_operations cramfs_dir_inode_operations = {
 };
 
 static const struct super_operations cramfs_ops = {
-	.remount_fs	= cramfs_remount,
 	.statfs		= cramfs_statfs,
 };
 
-static struct dentry *cramfs_mount(struct file_system_type *fs_type,
-	int flags, const char *dev_name, void *data)
+static int cramfs_get_tree(struct fs_context *fc)
 {
-	return mount_bdev(fs_type, flags, dev_name, data, cramfs_fill_super);
+	return get_tree_bdev(fc, cramfs_fill_super);
+}
+
+static const struct fs_context_operations cramfs_context_ops = {
+	.get_tree	= cramfs_get_tree,
+	.reconfigure	= cramfs_reconfigure,
+};
+
+/*
+ * Set up the filesystem mount context.
+ */
+static int cramfs_init_fs_context(struct fs_context *fc)
+{
+	fc->ops = &cramfs_context_ops;
+	return 0;
 }
 
 static struct file_system_type cramfs_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "cramfs",
-	.mount		= cramfs_mount,
+	.init_fs_context = cramfs_init_fs_context,
 	.kill_sb	= cramfs_kill_sb,
 	.fs_flags	= FS_REQUIRES_DEV,
 };
