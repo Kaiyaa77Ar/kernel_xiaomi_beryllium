@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/mount.h>
+#include <linux/pseudo_fs.h>
 #include <linux/pfn_t.h>
 #include <linux/hash.h>
 #include <linux/cdev.h>
@@ -100,15 +101,19 @@ static const struct super_operations dax_sops = {
 	.drop_inode = generic_delete_inode,
 };
 
-static struct dentry *dax_mount(struct file_system_type *fs_type,
-		int flags, const char *dev_name, void *data)
+static int dax_init_fs_context(struct fs_context *fc)
 {
-	return mount_pseudo(fs_type, &dax_sops, NULL, DAXFS_MAGIC);
+	struct pseudo_fs_context *ctx = init_pseudo(fc, DAXFS_MAGIC);
+
+	if (!ctx)
+		return -ENOMEM;
+	ctx->ops = &dax_sops;
+	return 0;
 }
 
 static struct file_system_type dax_type = {
 	.name = "dax",
-	.mount = dax_mount,
+	.init_fs_context = dax_init_fs_context,
 	.kill_sb = kill_anon_super,
 };
 
