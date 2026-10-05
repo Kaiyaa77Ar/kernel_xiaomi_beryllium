@@ -278,16 +278,25 @@ void security_sb_free(struct super_block *sb)
 	call_void_hook(sb_free_security, sb);
 }
 
-int security_sb_eat_lsm_opts(char *options, struct security_mnt_opts *opts)
+void security_free_mnt_opts(void **mnt_opts)
 {
-	return call_int_hook(sb_eat_lsm_opts, 0, options, opts);
+	if (!*mnt_opts)
+		return;
+	call_void_hook(sb_free_mnt_opts, *mnt_opts);
+	*mnt_opts = NULL;
+}
+EXPORT_SYMBOL(security_free_mnt_opts);
+
+int security_sb_eat_lsm_opts(char *options, void **mnt_opts)
+{
+	return call_int_hook(sb_eat_lsm_opts, 0, options, mnt_opts);
 }
 EXPORT_SYMBOL(security_sb_eat_lsm_opts);
 
 int security_sb_remount(struct super_block *sb,
-			struct security_mnt_opts *opts)
+			void *mnt_opts)
 {
-	return call_int_hook(sb_remount, 0, sb, opts);
+	return call_int_hook(sb_remount, 0, sb, mnt_opts);
 }
 EXPORT_SYMBOL(security_sb_remount);
 
@@ -323,13 +332,13 @@ int security_sb_pivotroot(const struct path *old_path, const struct path *new_pa
 }
 
 int security_sb_set_mnt_opts(struct super_block *sb,
-				struct security_mnt_opts *opts,
+				void *mnt_opts,
 				unsigned long kern_flags,
 				unsigned long *set_kern_flags)
 {
 	return call_int_hook(sb_set_mnt_opts,
-				opts->num_mnt_opts ? -EOPNOTSUPP : 0, sb,
-				opts, kern_flags, set_kern_flags);
+				mnt_opts ? -EOPNOTSUPP : 0, sb,
+				mnt_opts, kern_flags, set_kern_flags);
 }
 EXPORT_SYMBOL(security_sb_set_mnt_opts);
 
@@ -340,9 +349,9 @@ int security_sb_clone_mnt_opts(const struct super_block *oldsb,
 }
 EXPORT_SYMBOL(security_sb_clone_mnt_opts);
 
-int security_sb_parse_opts_str(char *options, struct security_mnt_opts *opts)
+int security_sb_parse_opts_str(char *options, void **mnt_opts)
 {
-	return call_int_hook(sb_parse_opts_str, 0, options, opts);
+	return call_int_hook(sb_parse_opts_str, 0, options, mnt_opts);
 }
 EXPORT_SYMBOL(security_sb_parse_opts_str);
 
@@ -1671,6 +1680,8 @@ struct security_hook_heads security_hook_heads __lsm_ro_after_init = {
 		LIST_HEAD_INIT(security_hook_heads.sb_alloc_security),
 	.sb_free_security =
 		LIST_HEAD_INIT(security_hook_heads.sb_free_security),
+	.sb_free_mnt_opts =
+		LIST_HEAD_INIT(security_hook_heads.sb_free_mnt_opts),
 	.sb_eat_lsm_opts =	LIST_HEAD_INIT(security_hook_heads.sb_eat_lsm_opts),
 	.sb_remount =	LIST_HEAD_INIT(security_hook_heads.sb_remount),
 	.sb_kern_mount =

@@ -109,13 +109,13 @@
  *	so that the security module can extract security-specific mount
  *	options cleanly (a filesystem may modify the data e.g. with strsep()).
  *	@orig the original mount data copied from userspace.
- *	@opts binary data structure containing all lsm mount data.
+ *	@mnt_opts binary data structure containing all lsm mount data.
  *	Returns 0 if the copy was successful.
  * @sb_remount:
  *	Extracts security system specific mount options and verifies no changes
  *	are being made to those options.
  *	@sb superblock being remounted
- *	@opts binary data structure containing all lsm mount data
+ *	@mnt_opts binary data structure containing all lsm mount data
  *	Return 0 if permission is granted.
  * @sb_umount:
  *	Check permission before the @mnt file system is unmounted.
@@ -131,7 +131,7 @@
  * @sb_set_mnt_opts:
  *	Set the security relevant mount options used for a superblock
  *	@sb the superblock to set security mount options for
- *	@opts binary data structure containing all lsm mount data
+ *	@mnt_opts binary data structure containing all lsm mount data
  * @sb_clone_mnt_opts:
  *	Copy all security options from a given superblock to another
  *	@oldsb old superblock which contain information to clone
@@ -139,7 +139,7 @@
  * @sb_parse_opts_str:
  *	Parse a string of security data filling in the opts structure
  *	@options string containing all mount options known by the LSM
- *	@opts binary data structure usable by the LSM
+ *	@mnt_opts binary data structure usable by the LSM
  * @dentry_init_security:
  *	Compute a context for a dentry as the inode is not yet available
  *	since NFSv4 has no label backed by an EA anyway.
@@ -1391,8 +1391,9 @@ union security_list_options {
 
 	int (*sb_alloc_security)(struct super_block *sb);
 	void (*sb_free_security)(struct super_block *sb);
-	int (*sb_eat_lsm_opts)(char *orig, struct security_mnt_opts *opts);
-	int (*sb_remount)(struct super_block *sb, struct security_mnt_opts *opts);
+	void (*sb_free_mnt_opts)(void *mnt_opts);
+	int (*sb_eat_lsm_opts)(char *orig, void **mnt_opts);
+	int (*sb_remount)(struct super_block *sb, void *mnt_opts);
 	int (*sb_kern_mount)(struct super_block *sb);
 	int (*sb_show_options)(struct seq_file *m, struct super_block *sb);
 	int (*sb_statfs)(struct dentry *dentry);
@@ -1401,12 +1402,12 @@ union security_list_options {
 	int (*sb_umount)(struct vfsmount *mnt, int flags);
 	int (*sb_pivotroot)(const struct path *old_path, const struct path *new_path);
 	int (*sb_set_mnt_opts)(struct super_block *sb,
-				struct security_mnt_opts *opts,
+				void *mnt_opts,
 				unsigned long kern_flags,
 				unsigned long *set_kern_flags);
 	int (*sb_clone_mnt_opts)(const struct super_block *oldsb,
 					struct super_block *newsb);
-	int (*sb_parse_opts_str)(char *options, struct security_mnt_opts *opts);
+	int (*sb_parse_opts_str)(char *options, void **mnt_opts);
 	int (*dentry_init_security)(struct dentry *dentry, int mode,
 					const struct qstr *name, void **ctx,
 					u32 *ctxlen);
@@ -1713,6 +1714,7 @@ struct security_hook_heads {
 	struct list_head bprm_committed_creds;
 	struct list_head sb_alloc_security;
 	struct list_head sb_free_security;
+	struct list_head sb_free_mnt_opts;
 	struct list_head sb_eat_lsm_opts;
 	struct list_head sb_remount;
 	struct list_head sb_kern_mount;
