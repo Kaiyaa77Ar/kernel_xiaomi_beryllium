@@ -263,6 +263,11 @@ void security_bprm_committed_creds(struct linux_binprm *bprm)
 	call_void_hook(bprm_committed_creds, bprm);
 }
 
+int security_fs_context_parse_param(struct fs_context *fc, struct fs_parameter *param)
+{
+	return call_int_hook(fs_context_parse_param, -ENOPARAM, fc, param);
+}
+
 int security_bprm_secureexec(struct linux_binprm *bprm)
 {
 	return call_int_hook(bprm_secureexec, 0, bprm);
@@ -1676,6 +1681,8 @@ struct security_hook_heads security_hook_heads __lsm_ro_after_init = {
 		LIST_HEAD_INIT(security_hook_heads.bprm_committing_creds),
 	.bprm_committed_creds =
 		LIST_HEAD_INIT(security_hook_heads.bprm_committed_creds),
+	.fs_context_parse_param =
+		LIST_HEAD_INIT(security_hook_heads.fs_context_parse_param),
 	.sb_alloc_security =
 		LIST_HEAD_INIT(security_hook_heads.sb_alloc_security),
 	.sb_free_security =
