@@ -1023,7 +1023,7 @@ struct vfsmount *vfs_kern_mount(struct file_system_type *type,
 				void *data)
 {
 	struct fs_context *fc;
-	struct mount *mnt;
+	struct vfsmount *mnt;
 	int ret = 0;
 
 	if (!type)
@@ -1041,31 +1041,12 @@ struct vfsmount *vfs_kern_mount(struct file_system_type *type,
 	if (!ret)
 		ret = parse_monolithic_mount_data(fc, data);
 	if (!ret)
-		ret = vfs_get_tree(fc);
-	if (ret) {
-		put_fs_context(fc);
-		return ERR_PTR(ret);
-	}
-	up_write(&fc->root->d_sb->s_umount);
-	mnt = alloc_vfsmnt(name);
-	if (!mnt) {
-		put_fs_context(fc);
-		return ERR_PTR(-ENOMEM);
-	}
+		mnt = fc_mount(fc);
+	else
+		mnt = ERR_PTR(ret);
 
-	if (flags & MS_KERNMOUNT)
-		mnt->mnt.mnt_flags = MNT_INTERNAL;
-
-	atomic_inc(&fc->root->d_sb->s_active);
-	mnt->mnt.mnt_root = dget(fc->root);
-	mnt->mnt.mnt_sb = fc->root->d_sb;
-	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
-	mnt->mnt_parent = mnt;
-	lock_mount_hash();
-	list_add_tail(&mnt->mnt_instance, &fc->root->d_sb->s_mounts);
-	unlock_mount_hash();
 	put_fs_context(fc);
-	return &mnt->mnt;
+	return mnt;
 }
 EXPORT_SYMBOL_GPL(vfs_kern_mount);
 
