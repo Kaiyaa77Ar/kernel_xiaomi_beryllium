@@ -504,7 +504,8 @@ struct super_block *sget_fc(struct fs_context *fc,
 	struct user_namespace *user_ns = fc->global ? &init_user_ns : fc->user_ns;
 	int err;
 
-	if (!(fc->sb_flags & MS_KERNMOUNT)) {
+	if (!(fc->sb_flags & MS_KERNMOUNT) &&
+	    fc->purpose != FS_CONTEXT_FOR_SUBMOUNT) {
 		/* Don't allow mounting unless the caller has CAP_SYS_ADMIN
 		 * over the namespace.
 		 */
