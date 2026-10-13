@@ -713,16 +713,31 @@ static inline void __range_cloexec(struct files_struct *cur_fds,
 static inline void __range_close(struct files_struct *cur_fds, unsigned int fd,
 				 unsigned int max_fd)
 {
-	while (fd <= max_fd) {
-		struct file *file;
+	struct file *file;
+	struct fdtable *fdt;
 
-		file = pick_file(cur_fds, fd++);
+	spin_lock(&cur_fds->file_lock);
+	fdt = files_fdtable(cur_fds);
+	max_fd = min(last_fd(fdt), max_fd);
+
+	for (fd = find_next_bit(fdt->open_fds, max_fd + 1, fd);
+	     fd <= max_fd;
+	     fd = find_next_bit(fdt->open_fds, max_fd + 1, fd + 1)) {
+		file = fdt->fd[fd];
 		if (!file)
 			continue;
 
+		rcu_assign_pointer(fdt->fd[fd], NULL);
+		__put_unused_fd(cur_fds, fd);
+
+		spin_unlock(&cur_fds->file_lock);
 		filp_close(file, cur_fds);
 		cond_resched();
+		spin_lock(&cur_fds->file_lock);
+		fdt = files_fdtable(cur_fds);
 	}
+
+	spin_unlock(&cur_fds->file_lock);
 }
 
 /**
