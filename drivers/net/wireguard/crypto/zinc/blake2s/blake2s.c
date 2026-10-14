@@ -251,7 +251,8 @@ static int __init mod_init(void)
 {
 	if (!nosimd)
 		blake2s_fpu_init();
-	if (!selftest_run("blake2s", blake2s_selftest, blake2s_nobs,
+	if (!selftest_run("blake2s", blake2s_selftest,
+			  ARRAY_SIZE(blake2s_nobs) ? blake2s_nobs : NULL,
 			  ARRAY_SIZE(blake2s_nobs)))
 		return -ENOTRECOVERABLE;
 	return 0;
