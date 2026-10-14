@@ -89,7 +89,8 @@ static int __init mod_init(void)
 {
 	if (!nosimd)
 		curve25519_fpu_init();
-	if (!selftest_run("curve25519", curve25519_selftest, curve25519_nobs,
+	if (!selftest_run("curve25519", curve25519_selftest,
+			  ARRAY_SIZE(curve25519_nobs) ? curve25519_nobs : NULL,
 			  ARRAY_SIZE(curve25519_nobs)))
 		return -ENOTRECOVERABLE;
 	return 0;
