@@ -51,6 +51,9 @@ int sysctl_oom_kill_allocating_task;
 int sysctl_oom_dump_tasks = 1;
 int sysctl_reap_mem_on_sigkill;
 
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+static unsigned long panic_on_oom_timeout;
+#endif
 DEFINE_MUTEX(oom_lock);
 
 #ifdef CONFIG_NUMA
@@ -935,6 +938,9 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 	 * space under its control.
 	 */
 	do_send_sig_info(SIGKILL, SEND_SIG_FORCED, victim, true);
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	panic_on_oom_timeout = 0;
+#endif
 	mark_oom_victim(victim);
 	pr_err("Killed process %d (%s) total-vm:%lukB, anon-rss:%lukB, file-rss:%lukB, shmem-rss:%lukB\n",
 		task_pid_nr(victim), victim->comm, K(victim->mm->total_vm),
@@ -984,6 +990,8 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 }
 #undef K
 
+#define PANIC_ON_OOM_DEFER_TIMEOUT (5*HZ)
+#define PANIC_ON_OOM_DEFER_WINDOW  (20*HZ)
 /*
  * Determines whether the kernel must panic because of the panic_on_oom sysctl.
  */
@@ -1004,6 +1012,20 @@ static void check_panic_on_oom(struct oom_control *oc,
 	/* Do not panic for oom kills triggered by sysrq */
 	if (is_sysrq_oom(oc))
 		return;
+
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	if (!panic_on_oom_timeout ||
+	    time_after_eq(jiffies, panic_on_oom_timeout +
+			    PANIC_ON_OOM_DEFER_WINDOW)) {
+		panic_on_oom_timeout = jiffies + PANIC_ON_OOM_DEFER_TIMEOUT;
+		oc->chosen = (void *)-1UL;
+		return;
+	} else if (time_before_eq(jiffies, panic_on_oom_timeout)) {
+		oc->chosen = (void *)-1UL;
+		return;
+	}
+#endif
+
 	dump_header(oc, NULL);
 	panic("Out of memory: %s panic_on_oom is enabled\n",
 		sysctl_panic_on_oom == 2 ? "compulsory" : "system-wide");
@@ -1163,6 +1185,9 @@ void add_to_oom_reaper(struct task_struct *p)
 	get_task_struct(p);
 	if (task_will_free_mem(p)) {
 		__mark_oom_victim(p);
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+		panic_on_oom_timeout = 0;
+#endif
 		wake_oom_reaper(p);
 	}
 	task_unlock(p);
