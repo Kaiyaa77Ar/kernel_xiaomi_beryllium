@@ -285,6 +285,10 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 {
 	struct oom_control *oc = arg;
 	unsigned long points;
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	struct task_struct *p;
+	short adj;
+#endif
 
 	if (oom_unkillable_task(task, NULL, oc->nodemask))
 		goto next;
@@ -300,6 +304,18 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 			goto next;
 		goto abort;
 	}
+
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	p = find_lock_task_mm(task);
+	if (!p)
+		goto next;
+
+	adj = p->signal->oom_score_adj;
+	task_unlock(p);
+
+	if (adj < oc->min_kill_adj)
+		goto next;
+#endif
 
 	/*
 	 * If task is allocating a lot of memory and has been marked to be
@@ -854,7 +870,11 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 	}
 	task_unlock(p);
 
-	if (__ratelimit(&oom_rs))
+	if (__ratelimit(&oom_rs)
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	    && oc->min_kill_adj < CONFIG_OOM_TASK_PRIORITY_ADJ_LIMIT
+#endif
+	   )
 		dump_header(oc, p);
 
 	pr_err("%s: Kill process %d (%s) score %u or sacrifice child\n",
@@ -1019,7 +1039,9 @@ bool out_of_memory(struct oom_control *oc)
 
 	if (oom_killer_disabled)
 		return false;
-
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	oc->min_kill_adj = OOM_SCORE_ADJ_MIN;
+#endif
 	if (!is_memcg_oom(oc)) {
 		blocking_notifier_call_chain(&oom_notify_list, 0, &freed);
 		if (freed > 0)
@@ -1054,20 +1076,40 @@ bool out_of_memory(struct oom_control *oc)
 	constraint = constrained_alloc(oc);
 	if (constraint != CONSTRAINT_MEMORY_POLICY)
 		oc->nodemask = NULL;
-	check_panic_on_oom(oc, constraint);
 
 	if (!is_memcg_oom(oc) && sysctl_oom_kill_allocating_task &&
 	    current->mm && !oom_unkillable_task(current, NULL, oc->nodemask) &&
 	    current->signal->oom_score_adj != OOM_SCORE_ADJ_MIN) {
+		check_panic_on_oom(oc, constraint);
 		get_task_struct(current);
 		oc->chosen = current;
 		oom_kill_process(oc, "Out of memory (oom_kill_allocating_task)");
 		return true;
 	}
 
-	select_bad_process(oc);
-	/* Found nothing?!?! Either we hang forever, or we panic. */
-	if (!oc->chosen && !is_sysrq_oom(oc) && !is_memcg_oom(oc)) {
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	if (oc->min_kill_adj < CONFIG_OOM_TASK_PRIORITY_ADJ_LIMIT) {
+		short prev_min_kill_adj = oc->min_kill_adj;
+
+		oc->min_kill_adj = CONFIG_OOM_TASK_PRIORITY_ADJ_LIMIT;
+		select_bad_process(oc);
+		if (!oc->chosen) {
+			pr_warn_ratelimited("Could not find task with adj >= %d\n",
+					CONFIG_OOM_TASK_PRIORITY_ADJ_LIMIT);
+			oc->min_kill_adj = prev_min_kill_adj;
+			oc->chosen_points = 0;
+		}
+
+	}
+#endif
+
+	if (!oc->chosen) {
+		check_panic_on_oom(oc, constraint);
+		select_bad_process(oc);
+	}
+
+	/* Found nothing?!?! */
+	if (!oc->chosen) {
 		dump_header(oc, NULL);
 		panic("Out of memory and no killable processes...\n");
 	}
