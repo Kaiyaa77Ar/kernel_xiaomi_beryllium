@@ -220,6 +220,16 @@ static inline bool is_huge_zero_page(struct page *page)
 	return false;
 }
 
+static inline bool is_huge_zero_pmd(pmd_t pmd)
+{
+	return false;
+}
+
+static inline bool is_huge_zero_pud(pud_t pud)
+{
+	return false;
+}
+
 static inline void mm_put_huge_zero_page(struct mm_struct *mm)
 {
 	return;
