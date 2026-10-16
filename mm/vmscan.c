@@ -124,6 +124,10 @@ struct scan_control {
 	/* help kswapd make better choices among multiple memcgs */
 	unsigned int memcgs_need_aging:1;
 	unsigned long last_reclaimed;
+	/* set when low-protection reserves force a second reclaim pass */
+	unsigned int memcg_low_reclaim:1;
+	/* task state for the debugfs command handler */
+	struct reclaim_state reclaim_state;
 #endif
 	/* Incremented by the number of inactive pages that were scanned */
 	unsigned long nr_scanned;
@@ -2442,6 +2446,47 @@ DEFINE_STATIC_KEY_ARRAY_FALSE(lru_gen_caps, NR_LRU_GEN_CAPS);
 #define get_cap(cap)	static_branch_unlikely(&lru_gen_caps[cap])
 #endif
 
+/* 4.9 has global_reclaim(); later trees renamed the predicate. */
+static inline bool cgroup_reclaim(struct scan_control *sc)
+{
+	return !global_reclaim(sc);
+}
+
+/* Low/min protection arrived after 4.9; MGLRU scans unthrottled here. */
+static inline void mem_cgroup_calculate_protection(struct mem_cgroup *root,
+						   struct mem_cgroup *memcg)
+{
+}
+
+static inline bool mem_cgroup_below_min(struct mem_cgroup *memcg)
+{
+	return false;
+}
+
+static inline bool mem_cgroup_below_low(struct mem_cgroup *memcg)
+{
+	return false;
+}
+
+/* Per-memcg vmstat arrived after 4.9; only the global counts exist here. */
+static inline void __count_memcg_events(struct mem_cgroup *memcg,
+					enum vm_event_item idx,
+					unsigned long count)
+{
+}
+
+static void set_task_reclaim_state(struct task_struct *task,
+				   struct reclaim_state *rs)
+{
+	/* Check for an overwrite */
+	WARN_ON_ONCE(rs && task->reclaim_state);
+
+	/* Check for the nulling of an already-nulled member */
+	WARN_ON_ONCE(!rs && !task->reclaim_state);
+
+	task->reclaim_state = rs;
+}
+
 /******************************************************************************
  *                          shorthand helpers
  ******************************************************************************/
@@ -3474,11 +3519,6 @@ done:
 
 static void walk_mm(struct lruvec *lruvec, struct mm_struct *mm, struct lru_gen_mm_walk *walk)
 {
-	static const struct mm_walk_ops mm_walk_ops = {
-		.test_walk = should_skip_vma,
-		.p4d_entry = walk_pud_range,
-	};
-
 	int err;
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
@@ -3500,7 +3540,33 @@ static void walk_mm(struct lruvec *lruvec, struct mm_struct *mm, struct lru_gen_
 
 		/* the caller might be holding the lock for write */
 		if (mmap_read_trylock(mm)) {
-			err = walk_page_range(mm, walk->next_addr, ULONG_MAX, &mm_walk_ops, walk);
+			struct mm_walk args = {
+				.mm = mm,
+				.private = walk,
+				.test_walk = should_skip_vma,
+			};
+			unsigned long start = walk->next_addr;
+
+			/* mirror test_walk for the entry VMA */
+			args.vma = find_vma(mm, start);
+			while (args.vma && should_skip_vma(args.vma->vm_start,
+							   args.vma->vm_end,
+							   &args))
+				args.vma = args.vma->vm_next;
+
+			if (!args.vma)
+				err = 1;
+			else {
+				pgd_t *pgd;
+				unsigned long end;
+
+				start = max(start, args.vma->vm_start);
+				pgd = pgd_offset(mm, start);
+				end = pgd_addr_end(start, ULONG_MAX);
+				/* p4d folded onto pgd on 4.9/arm64 */
+				err = walk_pud_range((p4d_t *)pgd, start,
+						     end, &args);
+			}
 
 			mmap_read_unlock(mm);
 		}
@@ -3858,7 +3924,7 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 
 	memcg = mem_cgroup_iter(NULL, NULL, NULL);
 	do {
-		struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
+		struct lruvec *lruvec = mem_cgroup_lruvec(pgdat, memcg);
 
 		if (age_lruvec(lruvec, sc, min_ttl))
 			success = true;
@@ -3909,7 +3975,7 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 	bool can_swap = !page_is_file_lru(page);
 	struct mem_cgroup *memcg = page_memcg(page);
 	struct pglist_data *pgdat = page_pgdat(page);
-	struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
+	struct lruvec *lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	DEFINE_MAX_SEQ(lruvec);
 	int old_gen, new_gen = lru_gen_from_seq(max_seq);
 
@@ -4205,7 +4271,6 @@ static int scan_pages(struct lruvec *lruvec, struct scan_control *sc,
 	}
 	__count_memcg_events(memcg, item, isolated);
 	__count_memcg_events(memcg, PGREFILL, sorted);
-	__count_vm_events(PGSCAN_ANON + type, isolated);
 
 	/*
 	 * There might not be eligible pages due to reclaim_idx, may_unmap and
@@ -4316,7 +4381,6 @@ static int evict_pages(struct lruvec *lruvec, struct scan_control *sc, int swapp
 	struct page *page;
 	struct page *next;
 	enum vm_event_item item;
-	struct reclaim_stat stat;
 	struct lru_gen_mm_walk *walk;
 	bool skip_retry = false;
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
@@ -4336,7 +4400,13 @@ static int evict_pages(struct lruvec *lruvec, struct scan_control *sc, int swapp
 	if (list_empty(&list))
 		return scanned;
 retry:
-	reclaimed = shrink_page_list(&list, pgdat, sc, &stat, false);
+	{
+		unsigned long dummy[5] = {};
+
+		reclaimed = shrink_page_list(&list, pgdat, sc, TTU_UNMAP,
+					     &dummy[0], &dummy[1], &dummy[2],
+					     &dummy[3], &dummy[4], false);
+	}
 	sc->nr_reclaimed += reclaimed;
 
 	list_for_each_entry_safe_reverse(page, next, &list, lru) {
@@ -4370,7 +4440,7 @@ retry:
 
 	spin_lock_irq(&pgdat->lru_lock);
 
-	move_pages_to_lru(lruvec, &list);
+	putback_inactive_pages(lruvec, &list);
 
 	walk = current->reclaim_state->mm_walk;
 	if (walk && walk->batched)
@@ -4380,12 +4450,11 @@ retry:
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(item, reclaimed);
 	__count_memcg_events(memcg, item, reclaimed);
-	__count_vm_events(PGSTEAL_ANON + type, reclaimed);
 
 	spin_unlock_irq(&pgdat->lru_lock);
 
 	mem_cgroup_uncharge_list(&list);
-	free_unref_page_list(&list);
+	free_hot_cold_page_list(&list, true);
 
 	INIT_LIST_HEAD(&list);
 	list_splice_init(&clean, &list);
