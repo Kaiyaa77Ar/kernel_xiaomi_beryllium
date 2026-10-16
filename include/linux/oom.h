@@ -39,6 +39,9 @@ struct oom_control {
 	unsigned long totalpages;
 	struct task_struct *chosen;
 	unsigned long chosen_points;
+#ifdef CONFIG_PRIORITIZE_OOM_TASKS
+	short min_kill_adj;
+#endif
 };
 
 extern struct mutex oom_lock;
