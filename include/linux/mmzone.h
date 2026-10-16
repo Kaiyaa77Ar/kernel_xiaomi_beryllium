@@ -384,7 +384,7 @@ struct lru_gen_mm_state {
 	/* where the last iteration ended before */
 	struct list_head *tail;
 	/* Unused - keep for ABI compatiiblity */
-	struct wait_queue_head wait;
+	wait_queue_head_t wait;
 	/* Bloom filters flip after each iteration */
 	unsigned long *filters[NR_BLOOM_FILTERS];
 	/* the mm stats for debugging */
