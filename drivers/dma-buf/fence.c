@@ -88,9 +88,12 @@ int fence_signal_locked(struct fence *fence)
 	} else
 		trace_fence_signaled(fence);
 
-	list_for_each_entry_safe(cur, tmp, &fence->cb_list, node) {
-		list_del_init(&cur->node);
-		cur->func(fence, cur);
+	if (!list_empty(&fence->cb_list)) {
+		list_for_each_entry_safe(cur, tmp, &fence->cb_list, node) {
+			INIT_LIST_HEAD(&cur->node);
+			cur->func(fence, cur);
+		}
+		INIT_LIST_HEAD(&fence->cb_list);
 	}
 	return ret;
 }
