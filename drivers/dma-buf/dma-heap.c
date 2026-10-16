@@ -12,6 +12,7 @@
 #include <linux/dma-buf.h>
 #include <linux/err.h>
 #include <linux/idr.h>
+#include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
@@ -40,6 +41,8 @@ struct dma_heap {
 	dev_t heap_devt;
 	struct list_head list;
 	struct cdev heap_cdev;
+	int minor;
+	struct kref refcount;
 };
 
 static LIST_HEAD(heap_list);
@@ -193,11 +196,37 @@ void *dma_heap_get_drvdata(struct dma_heap *heap)
 	return heap->priv;
 }
 
+static void dma_heap_release(struct kref *ref)
+{
+	struct dma_heap *heap = container_of(ref, struct dma_heap, refcount);
+
+	/* Note, we already holding the heap_list_lock here */
+	list_del(&heap->list);
+
+	device_destroy(dma_heap_class, heap->heap_devt);
+	cdev_del(&heap->heap_cdev);
+	mutex_lock(&minor_lock);
+	idr_remove(&dma_heap_minors, heap->minor);
+	mutex_unlock(&minor_lock);
+
+	kfree(heap);
+}
+
+void dma_heap_put(struct dma_heap *h)
+{
+	/*
+	 * Take the heap_list_lock now to avoid racing with code
+	 * scanning the list and then taking a kref.
+	 */
+	mutex_lock(&heap_list_lock);
+	kref_put(&h->refcount, dma_heap_release);
+	mutex_unlock(&heap_list_lock);
+}
+
 struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
 {
 	struct dma_heap *heap, *h, *err_ret;
 	struct device *dev_ret;
-	int minor;
 	int ret;
 
 	if (!exp_info->name || !strcmp(exp_info->name, "")) {
@@ -226,23 +255,24 @@ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
 	if (!heap)
 		return ERR_PTR(-ENOMEM);
 
+	kref_init(&heap->refcount);
 	heap->name = exp_info->name;
 	heap->ops = exp_info->ops;
 	heap->priv = exp_info->priv;
 
 	/* Find unused minor number */
 	mutex_lock(&minor_lock);
-	minor = idr_alloc(&dma_heap_minors, heap, 0, NUM_HEAP_MINORS,
-			  GFP_KERNEL);
+	heap->minor = idr_alloc(&dma_heap_minors, heap, 0, NUM_HEAP_MINORS,
+				GFP_KERNEL);
 	mutex_unlock(&minor_lock);
-	if (minor < 0) {
+	if (heap->minor < 0) {
 		pr_err("dma_heap: Unable to get minor number for heap\n");
-		err_ret = ERR_PTR(minor);
+		err_ret = ERR_PTR(heap->minor);
 		goto err0;
 	}
 
 	/* Create device */
-	heap->heap_devt = MKDEV(MAJOR(dma_heap_devt), minor);
+	heap->heap_devt = MKDEV(MAJOR(dma_heap_devt), heap->minor);
 
 	cdev_init(&heap->heap_cdev, &dma_heap_fops);
 	ret = cdev_add(&heap->heap_cdev, heap->heap_devt, 1);
@@ -273,7 +303,7 @@ err2:
 	cdev_del(&heap->heap_cdev);
 err1:
 	mutex_lock(&minor_lock);
-	idr_remove(&dma_heap_minors, minor);
+	idr_remove(&dma_heap_minors, heap->minor);
 	mutex_unlock(&minor_lock);
 err0:
 	kfree(heap);
