@@ -199,6 +199,20 @@ int page_referenced(struct page *, int is_locked,
 
 int try_to_unmap(struct page *, enum ttu_flags flags);
 
+/* MGLRU: 4.9 rmap has no pvmw walker; struct only for look_around. */
+#define PVMW_SYNC		(1 << 0)
+#define PVMW_MIGRATION		(1 << 1)
+
+struct page_vma_mapped_walk {
+	struct page *page;
+	struct vm_area_struct *vma;
+	unsigned long address;
+	pmd_t *pmd;
+	pte_t *pte;
+	spinlock_t *ptl;
+	unsigned int flags;
+};
+
 /*
  * Used by uprobes to replace a userspace page safely
  */
