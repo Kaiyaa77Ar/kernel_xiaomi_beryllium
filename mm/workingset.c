@@ -231,7 +231,7 @@ static void *lru_gen_eviction(struct page *page)
 
 	BUILD_BUG_ON(LRU_GEN_WIDTH + LRU_REFS_WIDTH > BITS_PER_LONG - EVICTION_SHIFT);
 
-	lruvec = mem_cgroup_lruvec(memcg, pgdat);
+	lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	lrugen = &lruvec->lrugen;
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
 	token = (min_seq << LRU_REFS_WIDTH) | max(refs - 1, 0);
@@ -267,10 +267,11 @@ static void lru_gen_refault(struct page *page, void *shadow)
 	if (memcg_id != mem_cgroup_id(memcg))
 		goto unlock;
 
-	lruvec = mem_cgroup_lruvec(memcg, pgdat);
+	lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	lrugen = &lruvec->lrugen;
 
-	mod_lruvec_state(lruvec, WORKINGSET_REFAULT_BASE + type, delta);
+	/* 4.9 counts refaults per node, not per anon/file */
+	mod_node_page_state(lruvec_pgdat(lruvec), WORKINGSET_REFAULT, delta);
 
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
 	if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))
@@ -282,7 +283,7 @@ static void lru_gen_refault(struct page *page, void *shadow)
 	tier = lru_tier_from_refs(refs);
 
 	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);
-	mod_lruvec_state(lruvec, WORKINGSET_ACTIVATE_BASE + type, delta);
+	mod_node_page_state(lruvec_pgdat(lruvec), WORKINGSET_ACTIVATE, delta);
 
 	/*
 	 * Count the following two cases as stalls:
@@ -293,7 +294,8 @@ static void lru_gen_refault(struct page *page, void *shadow)
 	 */
 	if (lru_gen_in_fault() || refs == BIT(LRU_REFS_WIDTH)) {
 		SetPageWorkingset(page);
-		mod_lruvec_state(lruvec, WORKINGSET_RESTORE_BASE + type, delta);
+		mod_node_page_state(lruvec_pgdat(lruvec), WORKINGSET_RESTORE,
+				    delta);
 	}
 unlock:
 	rcu_read_unlock();
