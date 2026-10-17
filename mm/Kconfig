@@ -806,6 +806,18 @@ config LRU_GEN_STATS
 
 	  This option has a per-memcg and per-node memory overhead.
 
+config WORKINGSET_PROTECTION
+	bool "Enable working set protection by default"
+	depends on SYSCTL
+	default n
+	help
+	  This option sets the default value for the vm.workingset_protection
+	  sysctl knob, which enables protection of the working set (a portion
+	  of anonymous and clean file pages) under memory pressure.
+
+	  The vm.workingset_protection sysctl knob can still be changed at
+	  runtime to turn the protection on or off.
+
 config ANON_MIN_RATIO
 	int "Default value for vm.anon_min_ratio"
 	depends on SYSCTL
