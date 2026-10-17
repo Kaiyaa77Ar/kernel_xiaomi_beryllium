@@ -198,6 +198,22 @@ void ftrace_likely_update(struct ftrace_branch_data *f, int val, int expect);
 # define barrier_before_unreachable() do { } while (0)
 #endif
 
+#ifdef CONFIG_STACK_VALIDATION
+#define annotate_unreachable() ({					\
+	asm("1:\t\n"							\
+	    ".pushsection .discard.unreachable\t\n"			\
+	    ".long 1b\t\n"						\
+	    ".popsection\t\n");						\
+})
+
+/* Annotate a C jump table to allow objtool to follow the code flow */
+#define __annotate_jump_table __section(".rodata..c_jump_table")
+
+#else
+#define annotate_unreachable()
+#define __annotate_jump_table
+#endif
+
 /* Unreachable code */
 #ifndef unreachable
 # define unreachable() do { } while (1)
