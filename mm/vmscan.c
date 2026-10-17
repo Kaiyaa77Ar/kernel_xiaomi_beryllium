@@ -5873,6 +5873,11 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 					  struct scan_control *sc)
 {
 	int initial_priority = sc->priority;
+	struct reclaim_state *reclaim_state = current->reclaim_state;
+	unsigned long nr_reclaimed;
+
+	if (!reclaim_state)
+		current->reclaim_state = &sc->reclaim_state;
 retry:
 	delayacct_freepages_start();
 
@@ -5901,12 +5906,16 @@ retry:
 
 	delayacct_freepages_end();
 
-	if (sc->nr_reclaimed)
-		return sc->nr_reclaimed;
+	if (sc->nr_reclaimed) {
+		nr_reclaimed = sc->nr_reclaimed;
+		goto out;
+	}
 
 	/* Aborted reclaim to try compaction? don't OOM, then */
-	if (sc->compaction_ready)
-		return 1;
+	if (sc->compaction_ready) {
+		nr_reclaimed = 1;
+		goto out;
+	}
 
 	/* Untapped cgroup reserves?  Don't OOM, retry. */
 	if (sc->memcg_low_skipped) {
@@ -5916,7 +5925,12 @@ retry:
 		goto retry;
 	}
 
-	return 0;
+	nr_reclaimed = 0;
+out:
+	if (!reclaim_state)
+		current->reclaim_state = NULL;
+
+	return nr_reclaimed;
 }
 
 static bool allow_direct_reclaim(pg_data_t *pgdat)
