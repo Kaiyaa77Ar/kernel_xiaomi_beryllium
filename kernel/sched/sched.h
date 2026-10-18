@@ -690,6 +690,9 @@ struct root_domain {
 
 	/* First cpu with maximum and minimum original capacity */
 	int max_cap_orig_cpu, min_cap_orig_cpu;
+
+	/* First cpu with mid capacity */
+	int mid_cap_orig_cpu;
 };
 
 extern struct root_domain def_root_domain;
@@ -2414,6 +2417,13 @@ static inline void cpufreq_update_this_cpu(struct rq *rq, unsigned int flags) {}
 
 #ifdef CONFIG_SCHED_WALT
 
+#define WALT_MANY_WAKEUP_DEFAULT 1000
+
+static inline bool walt_want_remote_wakeup(void)
+{
+	return sysctl_sched_many_wakeup_threshold < WALT_MANY_WAKEUP_DEFAULT;
+}
+
 static inline int cluster_first_cpu(struct sched_cluster *cluster)
 {
 	return cpumask_first(&cluster->cpus);
@@ -2836,6 +2846,11 @@ static inline bool task_placement_boost_enabled(struct task_struct *p)
 	return false;
 }
 
+static inline bool is_full_throttle_boost(void)
+{
+	return sched_boost() == FULL_THROTTLE_BOOST;
+}
+
 extern void walt_map_freq_to_load(void);
 
 static inline bool is_min_capacity_cluster(struct sched_cluster *cluster)
@@ -2858,6 +2873,10 @@ static inline enum sched_boost_policy task_boost_policy(struct task_struct *p)
 	return SCHED_BOOST_NONE;
 }
 static inline bool task_placement_boost_enabled(struct task_struct *p)
+{
+	return false;
+}
+static inline bool is_full_throttle_boost(void)
 {
 	return false;
 }
