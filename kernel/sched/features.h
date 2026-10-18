@@ -110,3 +110,9 @@ SCHED_FEAT(FBT_STRICT_ORDER, false)
  * OFF: schedtune.prefer_idle is honored as is.
  */
 SCHED_FEAT(EAS_USE_NEED_IDLE, true)
+/*
+ * Use find_best_target() to pre-select the energy-efficient CPU candidates.
+ * ON: use find_best_target().
+ * OFF: use select_cpu_candidates().
+ */
+SCHED_FEAT(FIND_BEST_TARGET, true)
