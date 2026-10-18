@@ -477,6 +477,15 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &zero,
 		.extra2		= &two_hundred_fifty_five,
 	},
+	{
+		.procname	= "sched_many_wakeup_threshold",
+		.data		= &sysctl_sched_many_wakeup_threshold,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &two,
+		.extra2		= &one_thousand,
+	},
 #endif
 	{
 		.procname	= "sched_upmigrate",

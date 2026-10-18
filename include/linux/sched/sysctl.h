@@ -42,6 +42,7 @@ extern unsigned int sysctl_sched_little_cluster_coloc_fmin_khz;
 extern unsigned int sysctl_walt_rtg_cfs_boost_prio;
 extern unsigned int sysctl_sched_prefer_spread;
 extern unsigned int sysctl_sched_task_unfilter_nr_windows;
+extern unsigned int sysctl_sched_many_wakeup_threshold;
 
 extern int
 walt_proc_update_handler(struct ctl_table *table, int write,

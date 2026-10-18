@@ -149,6 +149,7 @@ unsigned int walt_rotation_enabled;
 unsigned int sysctl_walt_rtg_cfs_boost_prio = 99; /* disabled by default */
 __read_mostly unsigned int sysctl_sched_prefer_spread;
 unsigned int sysctl_sched_task_unfilter_nr_windows = 10;
+unsigned int sysctl_sched_many_wakeup_threshold = WALT_MANY_WAKEUP_DEFAULT;
 
 /*
  * sched_window_stats_policy and sched_ravg_hist_size have a 'sysctl' copy
