@@ -19,7 +19,7 @@
 #include <linux/sched.h>
 #include <linux/math64.h>
 
-#include "sched.h"
+#include "../sched.h"
 #include "walt.h"
 #include <trace/events/sched.h>
 

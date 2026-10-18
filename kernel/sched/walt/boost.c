@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  */
 
-#include "sched.h"
+#include "../sched.h"
 #include <linux/of.h>
 #include <linux/sched/core_ctl.h>
 #include <trace/events/sched.h>

@@ -25,7 +25,7 @@
 #include <linux/jiffies.h>
 #include <linux/sched/core_ctl.h>
 #include <trace/events/sched.h>
-#include "sched.h"
+#include "../sched.h"
 #include "walt.h"
 
 #include <trace/events/sched.h>

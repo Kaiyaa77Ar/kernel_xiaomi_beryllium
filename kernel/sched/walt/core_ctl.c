@@ -22,7 +22,7 @@
 #include <linux/syscore_ops.h>
 
 #include <trace/events/sched.h>
-#include "sched.h"
+#include "../sched.h"
 #include "walt.h"
 
 #define MAX_CPUS_PER_CLUSTER 6
