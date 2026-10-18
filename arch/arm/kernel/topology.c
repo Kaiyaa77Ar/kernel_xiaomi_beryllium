@@ -13,6 +13,7 @@
 
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
+#include <linux/energy_model.h>
 #include <linux/export.h>
 #include <linux/init.h>
 #include <linux/percpu.h>
@@ -21,7 +22,6 @@
 #include <linux/of.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/sched_energy.h>
 
 #include <asm/cputype.h>
 #include <asm/topology.h>
@@ -235,6 +235,7 @@ static unsigned long *__cpu_capacity;
 #define cpu_capacity(cpu)	__cpu_capacity[cpu]
 
 static unsigned long middle_capacity = 1;
+static unsigned int max_efficiency = 1;
 
 /*
  * Iterate all CPUs' descriptor in DT and compute the efficiency
@@ -314,6 +315,8 @@ static int __init parse_dt_topology(void)
 		}
 
 		per_cpu(cpu_efficiency, cpu) = efficiency;
+		if (efficiency > max_efficiency)
+			max_efficiency = efficiency;
 
 		rate = of_get_property(cn, "clock-frequency", &len);
 		if (!rate || len != 4) {
@@ -355,8 +358,6 @@ out:
 	return ret;
 }
 
-static const struct sched_group_energy * const cpu_core_energy(int cpu);
-
 /*
  * Look for a customed capacity of a CPU in the cpu_capacity table during the
  * boot. The update of all CPUs is in O(n^2) for heteregeneous system but the
@@ -364,12 +365,25 @@ static const struct sched_group_energy * const cpu_core_energy(int cpu);
  */
 static void update_cpu_capacity(unsigned int cpu)
 {
-	unsigned long capacity = SCHED_CAPACITY_SCALE;
+	struct em_perf_domain *pd = em_cpu_get(cpu);
+	unsigned long capacity, max_freq = 0;
+	int i, efficiency = arch_get_cpu_efficiency(cpu);
 
-	if (cpu_core_energy(cpu)) {
-		int max_cap_idx = cpu_core_energy(cpu)->nr_cap_states - 1;
-		capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
+	if (!pd || !pd->nr_cap_states)
+		return;
+
+	for_each_possible_cpu(i) {
+		struct em_perf_domain *p = em_cpu_get(i);
+
+		if (p && p->nr_cap_states)
+			max_freq = max(max_freq,
+				p->table[p->nr_cap_states - 1].frequency);
 	}
+
+	capacity = DIV_ROUND_UP(SCHED_CAPACITY_SCALE *
+				pd->table[pd->nr_cap_states - 1].frequency,
+				max_freq);
+	capacity = DIV_ROUND_UP(capacity * efficiency, max_efficiency);
 
 	set_capacity_scale(cpu, capacity);
 
@@ -500,33 +514,6 @@ topology_populated:
 	update_cpu_capacity(cpuid);
 }
 
-/* sd energy functions */
-static inline
-const struct sched_group_energy * const cpu_cluster_energy(int cpu)
-{
-	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL1];
-
-	if (sched_is_energy_aware() && !sge) {
-		pr_warn("Invalid sched_group_energy for Cluster%d\n", cpu);
-		return NULL;
-	}
-
-	return sge;
-}
-
-static inline
-const struct sched_group_energy * const cpu_core_energy(int cpu)
-{
-	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL0];
-
-	if (sched_is_energy_aware() && !sge) {
-		pr_warn("Invalid sched_group_energy for CPU%d\n", cpu);
-		return NULL;
-	}
-
-	return sge;
-}
-
 static inline int cpu_corepower_flags(void)
 {
 	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN | \
@@ -535,9 +522,9 @@ static inline int cpu_corepower_flags(void)
 
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
-	{ cpu_coregroup_mask, cpu_corepower_flags, cpu_core_energy, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, cpu_corepower_flags, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, NULL, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, NULL, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
@@ -589,5 +576,4 @@ void __init init_cpu_topology(void)
 
 	/* Set scheduler topology descriptor */
 	set_sched_topology(arm_topology);
-	init_sched_energy_costs();
 }

@@ -1510,7 +1510,7 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 	 * will have to sort it out.
 	 */
 	may_not_preempt = task_may_not_preempt(curr, cpu);
-	if (energy_aware() || may_not_preempt ||
+	if (static_branch_unlikely(&sched_energy_present) || may_not_preempt ||
 	     (unlikely(rt_task(curr)) &&
 	     (tsk_nr_cpus_allowed(curr) < 2 ||
 	      curr->prio <= p->prio))) {
@@ -1765,7 +1765,7 @@ static int find_lowest_rq(struct task_struct *task)
 	if (!cpupri_find(&task_rq(task)->rd->cpupri, task, lowest_mask))
 		return -1; /* No targets found */
 
-	if (energy_aware()) {
+	if (static_branch_unlikely(&sched_energy_present)) {
 		sg_target = NULL;
 		best_cpu = -1;
 

@@ -5664,15 +5664,6 @@ static void record_wakee(struct task_struct *p)
 }
 
 /*
- * Externally visible function. Let's keep the one above
- * so that the check is inlined/optimized in the sched paths.
- */
-bool sched_is_energy_aware(void)
-{
-	return energy_aware();
-}
-
-/*
  * Returns the current capacity of cpu after applying both
  * cpu and freq scaling.
  */
@@ -6624,7 +6615,6 @@ static inline int get_start_cpu(struct task_struct *p)
 	return start_cpu;
 }
 
-unsigned int sched_smp_overlap_capacity;
 
 struct find_best_target_env {
 	int placement_boost;
@@ -8418,7 +8408,7 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 	/* Record that we found atleast one task that could run on dst_cpu */
 	env->flags &= ~LBF_ALL_PINNED;
 
-	if (energy_aware() && !env->dst_rq->rd->overutilized &&
+	if (static_branch_unlikely(&sched_energy_present) && !env->dst_rq->rd->overutilized &&
 	    env->idle == CPU_NEWLY_IDLE &&
 	    !task_in_related_thread_group(p)) {
 		long util_cum_dst, util_cum_src;
@@ -9755,7 +9745,7 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	 */
 	update_sd_lb_stats(env, &sds);
 
-	if (energy_aware() && !env->dst_rq->rd->overutilized) {
+	if (static_branch_unlikely(&sched_energy_present) && !env->dst_rq->rd->overutilized) {
 		int cpu_local, cpu_busiest;
 		unsigned long energy_local, energy_busiest;
 
@@ -9937,7 +9927,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 		 * firstly make sure the misfit task can be migrated onto
 		 * higher capacity CPU.
 		 */
-		if (energy_aware() &&
+		if (static_branch_unlikely(&sched_energy_present) &&
 		    capacity_orig_of(i) < capacity_orig_of(env->dst_cpu) &&
 		    rq->misfit_task &&
 		    env->busiest_group_type == group_misfit_task) {
@@ -10454,7 +10444,7 @@ static int idle_balance(struct rq *this_rq)
 	 */
 	this_rq->idle_stamp = rq_clock(this_rq);
 
-	if (!energy_aware() && !force_lb &&
+	if (!static_branch_unlikely(&sched_energy_present) && !force_lb &&
 	    (this_rq->avg_idle < sysctl_sched_migration_cost ||
 	     !this_rq->rd->overload)) {
 		rcu_read_lock();
@@ -10672,7 +10662,7 @@ static inline int find_new_ilb(int type)
 	rcu_read_lock();
 	sd = rcu_dereference_check_sched_domain(rq->sd);
 	if (sd) {
-		if (energy_aware() && rq->misfit_task)
+		if (static_branch_unlikely(&sched_energy_present) && rq->misfit_task)
 			cpumask_andnot(&cpumask, nohz.idle_cpus_mask,
 				sched_domain_span(sd));
 		else
@@ -10685,7 +10675,7 @@ static inline int find_new_ilb(int type)
 	rcu_read_unlock();
 
 	if (sd && (ilb >= nr_cpu_ids || !idle_cpu(ilb))) {
-		if (!energy_aware() ||
+		if (!static_branch_unlikely(&sched_energy_present) ||
 		    (capacity_orig_of(cpu) ==
 		     cpu_rq(cpu)->rd->max_cpu_capacity.val ||
 		     (cpu_overutilized(cpu) && rq->nr_running > 1))) {
@@ -11037,16 +11027,16 @@ static inline bool nohz_kick_needed(struct rq *rq, int *type)
 		return false;
 
 	if (rq->nr_running >= 2 &&
-	    (!energy_aware() || cpu_overutilized(cpu)))
+	    (!static_branch_unlikely(&sched_energy_present) || cpu_overutilized(cpu)))
 		return true;
 
 	/* Do idle load balance if there have misfit task */
-	if (energy_aware())
+	if (static_branch_unlikely(&sched_energy_present))
 		return rq->misfit_task;
 
 	rcu_read_lock();
 	sds = rcu_dereference(per_cpu(sd_llc_shared, cpu));
-	if (sds && !energy_aware()) {
+	if (sds && !static_branch_unlikely(&sched_energy_present)) {
 		/*
 		 * XXX: write a coherent comment on why we do this.
 		 * See also: http://lkml.kernel.org/r/20111202010832.602203411@sbsiddha-desk.sc.intel.com

@@ -1156,25 +1156,6 @@ struct sched_domain_attr {
 
 extern int sched_domain_level_max;
 
-struct capacity_state {
-	unsigned long cap;	/* capacity - calculated by energy driver */
-	unsigned long frequency;/* frequency */
-	unsigned long power;	/* power consumption at this frequency */
-};
-
-struct idle_state {
-	unsigned long power;	 /* power consumption in this idle state */
-};
-
-struct sched_group_energy {
-	unsigned int nr_idle_states;	/* number of idle states */
-	struct idle_state *idle_states;	/* ptr to idle state array */
-	unsigned int nr_cap_states;	/* number of capacity states */
-	struct capacity_state *cap_states; /* ptr to capacity state array */
-};
-
-extern bool sched_is_energy_aware(void);
-
 unsigned long capacity_curr_of(int cpu);
 
 struct sched_group;
@@ -1317,8 +1298,6 @@ bool cpus_share_cache(int this_cpu, int that_cpu);
 
 typedef const struct cpumask *(*sched_domain_mask_f)(int cpu);
 typedef int (*sched_domain_flags_f)(void);
-typedef
-const struct sched_group_energy * const(*sched_domain_energy_f)(int cpu);
 
 #define SDTL_OVERLAP	0x01
 
@@ -1332,7 +1311,6 @@ struct sd_data {
 struct sched_domain_topology_level {
 	sched_domain_mask_f mask;
 	sched_domain_flags_f sd_flags;
-	sched_domain_energy_f energy;
 	int		    flags;
 	int		    numa_level;
 	struct sd_data      data;

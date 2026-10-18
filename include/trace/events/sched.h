@@ -697,41 +697,6 @@ TRACE_EVENT(sched_cpu_util,
 		__entry->cpu, __entry->nr_running, __entry->cpu_util, __entry->cpu_util_cum, __entry->capacity_curr, __entry->capacity, __entry->capacity_orig, __entry->idle_state, __entry->irqload, __entry->online, __entry->isolated, __entry->reserved, __entry->high_irq_load)
 );
 
-TRACE_EVENT(sched_energy_diff,
-
-	TP_PROTO(struct task_struct *p, int prev_cpu, unsigned int prev_energy,
-		 int next_cpu, unsigned int next_energy,
-		 int backup_cpu, unsigned int backup_energy),
-
-	TP_ARGS(p, prev_cpu, prev_energy, next_cpu, next_energy,
-		backup_cpu, backup_energy),
-
-	TP_STRUCT__entry(
-		__field(int, pid		)
-		__field(int, prev_cpu		)
-		__field(int, prev_energy	)
-		__field(int, next_cpu		)
-		__field(int, next_energy	)
-		__field(int, backup_cpu		)
-		__field(int, backup_energy	)
-	),
-
-	TP_fast_assign(
-		__entry->pid			= p->pid;
-		__entry->prev_cpu		= prev_cpu;
-		__entry->prev_energy		= prev_energy;
-		__entry->next_cpu		= next_cpu;
-		__entry->next_energy		= next_energy;
-		__entry->backup_cpu		= backup_cpu;
-		__entry->backup_energy		= backup_energy;
-	),
-
-	TP_printk("pid=%d prev_cpu=%d prev_energy=%u next_cpu=%d next_energy=%u backup_cpu=%d backup_energy=%u",
-		__entry->pid, __entry->prev_cpu, __entry->prev_energy,
-		__entry->next_cpu, __entry->next_energy,
-		__entry->backup_cpu, __entry->backup_energy)
-);
-
 TRACE_EVENT(sched_task_util,
 
 	TP_PROTO(struct task_struct *p, int next_cpu, int backup_cpu,
@@ -1696,42 +1661,6 @@ TRACE_EVENT(sched_find_best_target,
 		__entry->best_idle, __entry->best_active,
 		__entry->target,
 		__entry->backup_cpu)
-);
-
-TRACE_EVENT(sched_group_energy,
-
-	TP_PROTO(int cpu, long group_util, u64 total_nrg,
-		 int busy_nrg, int idle_nrg, int grp_idle_idx,
-		 int new_capacity),
-
-	TP_ARGS(cpu, group_util, total_nrg,
-		busy_nrg, idle_nrg, grp_idle_idx,
-		new_capacity),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-		__field(long, group_util)
-		__field(u64, total_nrg)
-		__field(int, busy_nrg)
-		__field(int, idle_nrg)
-		__field(int, grp_idle_idx)
-		__field(int, new_capacity)
-	),
-
-	TP_fast_assign(
-		__entry->cpu = cpu;
-		__entry->group_util = group_util;
-		__entry->total_nrg = total_nrg;
-		__entry->busy_nrg = busy_nrg;
-		__entry->idle_nrg = idle_nrg;
-		__entry->grp_idle_idx = grp_idle_idx;
-		__entry->new_capacity = new_capacity;
-	),
-
-	TP_printk("cpu=%d group_util=%ld total_nrg=%llu busy_nrg=%d idle_nrg=%d grp_idle_idx=%d new_capacity=%d",
-		  __entry->cpu, __entry->group_util,
-		  __entry->total_nrg, __entry->busy_nrg, __entry->idle_nrg,
-		  __entry->grp_idle_idx, __entry->new_capacity)
 );
 
 /*

@@ -2273,9 +2273,9 @@ static void sort_clusters(void)
 
 	for_each_sched_cluster(cluster) {
 		cluster->max_power_cost = power_cost(cluster_first_cpu(cluster),
-							       true);
+						     max_task_load());
 		cluster->min_power_cost = power_cost(cluster_first_cpu(cluster),
-							       false);
+						     0);
 
 		if (cluster->max_power_cost > tmp_max)
 			tmp_max = cluster->max_power_cost;
@@ -2286,6 +2286,7 @@ static void sort_clusters(void)
 
 	list_sort(NULL, &new_head, compare_clusters);
 	assign_cluster_ids(&new_head);
+	min_power_cpu = cluster_first_cpu(sched_cluster[0]);
 
 	/*
 	 * Ensure cluster ids are visible to all CPUs before making
@@ -2295,57 +2296,6 @@ static void sort_clusters(void)
 }
 
 int __read_mostly min_power_cpu;
-
-void walt_sched_energy_populated_callback(void)
-{
-	struct sched_cluster *cluster;
-	int prev_max = 0, next_min = 0;
-
-	mutex_lock(&cluster_lock);
-
-	if (num_clusters == 1) {
-		sysctl_sched_is_big_little = 0;
-		mutex_unlock(&cluster_lock);
-		return;
-	}
-
-	sort_clusters();
-
-	for_each_sched_cluster(cluster) {
-		if (cluster->min_power_cost > prev_max) {
-			prev_max = cluster->max_power_cost;
-			continue;
-		}
-		/*
-		 * We assume no overlap in the power curves of
-		 * clusters on a big.LITTLE system.
-		 */
-		sysctl_sched_is_big_little = 0;
-		next_min = cluster->min_power_cost;
-	}
-
-	/*
-	 * Find the OPP at which the lower power cluster
-	 * power is overlapping with the next cluster.
-	 */
-	if (!sysctl_sched_is_big_little) {
-		int cpu = cluster_first_cpu(sched_cluster[0]);
-		struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL1];
-		int i;
-
-		for (i = 1; i < sge->nr_cap_states; i++) {
-			if (sge->cap_states[i].power >= next_min) {
-				sched_smp_overlap_capacity =
-						sge->cap_states[i-1].cap;
-				break;
-			}
-		}
-
-		min_power_cpu = cpu;
-	}
-
-	mutex_unlock(&cluster_lock);
-}
 
 static void update_all_clusters_stats(void)
 {
@@ -3028,24 +2978,31 @@ unsigned long thermal_cap(int cpu)
 
 unsigned long do_thermal_cap(int cpu, unsigned long thermal_max_freq)
 {
-	struct sched_domain *sd;
-	struct sched_group *sg;
 	struct rq *rq = cpu_rq(cpu);
-	int nr_cap_states;
 
+#ifdef CONFIG_ENERGY_MODEL
 	if (!max_cap[cpu]) {
+		int nr_cap_states;
+		struct root_domain *rd = rq->rd;
+		struct perf_domain *pd;
+		unsigned long freq, scale_cpu;
+
 		rcu_read_lock();
-		sd = rcu_dereference(per_cpu(sd_ea, cpu));
-		if (!sd || !sd->groups || !sd->groups->sge ||
-		    !sd->groups->sge->cap_states) {
+		pd = rcu_dereference(rd->pd);
+
+		if (!pd || !pd->em_pd || !pd->em_pd->table) {
 			rcu_read_unlock();
 			return rq->cpu_capacity_orig;
 		}
-		sg = sd->groups;
-		nr_cap_states = sg->sge->nr_cap_states;
-		max_cap[cpu] = sg->sge->cap_states[nr_cap_states - 1].cap;
+
+		nr_cap_states = em_pd_nr_cap_states(pd->em_pd);
+		scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
+		freq = pd->em_pd->table[nr_cap_states - 1].frequency;
+		max_cap[cpu] = DIV_ROUND_UP(scale_cpu * freq,
+					cpu_max_table_freq[cpu]);
 		rcu_read_unlock();
 	}
+#endif
 
 	if (cpu_max_table_freq[cpu])
 		return div64_ul(thermal_max_freq * max_cap[cpu],

@@ -14,7 +14,6 @@
 #include <linux/irq_work.h>
 #include <linux/tick.h>
 #include <linux/slab.h>
-#include <linux/sched_energy.h>
 #include <linux/energy_model.h>
 
 #include "cpupri.h"
@@ -31,7 +30,6 @@ struct rq;
 struct cpuidle_state;
 
 extern __read_mostly bool sched_predl;
-extern unsigned int sched_smp_overlap_capacity;
 
 #ifdef CONFIG_SCHED_WALT
 extern unsigned int sched_ravg_window;
@@ -1194,7 +1192,6 @@ struct sched_group {
 
 	unsigned int group_weight;
 	struct sched_group_capacity *sgc;
-	const struct sched_group_energy *sge;
 
 	/*
 	 * The CPUs this group covers.
@@ -2816,20 +2813,11 @@ extern void sched_boost_parse_dt(void);
 extern void clear_ed_task(struct task_struct *p, struct rq *rq);
 extern bool early_detection_notify(struct rq *rq, u64 wallclock);
 
-static inline unsigned int power_cost(int cpu, bool max)
+static inline unsigned int power_cost(int cpu, u64 demand)
 {
-	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL1];
-
-	if (!sge || !sge->nr_cap_states)
-		return cpu_max_possible_capacity(cpu);
-
-	if (max)
-		return sge->cap_states[sge->nr_cap_states - 1].power;
-	else
-		return sge->cap_states[0].power;
+	return cpu_max_possible_capacity(cpu);
 }
 
-extern void walt_sched_energy_populated_callback(void);
 extern void walt_update_min_max_capacity(void);
 
 static inline enum sched_boost_policy task_boost_policy(struct task_struct *p)
@@ -3012,21 +3000,15 @@ static inline bool early_detection_notify(struct rq *rq, u64 wallclock)
 	return 0;
 }
 
-static inline unsigned int power_cost(int cpu, bool max)
+static inline unsigned int power_cost(int cpu, u64 demand)
 {
 	return SCHED_CAPACITY_SCALE;
 }
 
-static inline void walt_sched_energy_populated_callback(void) { }
 static inline void walt_update_min_max_capacity(void) { }
 
 static inline void walt_map_freq_to_load(void) { }
 #endif	/* CONFIG_SCHED_WALT */
-
-static inline bool energy_aware(void)
-{
-	return sched_feat(ENERGY_AWARE);
-}
 
 #ifdef CONFIG_SCHED_CORE_ROTATE
 struct find_first_cpu_bit_env {
