@@ -3060,4 +3060,6 @@ static inline void sched_irq_work_queue(struct irq_work *work)
 #else
 #define perf_domain_span(pd) NULL
 #endif
+
+extern struct static_key_false sched_energy_present;
 #endif
