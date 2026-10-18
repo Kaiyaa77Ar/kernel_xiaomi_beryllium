@@ -135,7 +135,7 @@ static inline void *kvmalloc(size_t size, gfp_t flags)
 
 	ret = kmalloc(size, flags | __GFP_NOWARN);
 	if (!ret)
-		ret = __vmalloc(size, flags, PAGE_KERNEL);
+		ret = vmalloc(size, flags);
 	return ret;
 }
 

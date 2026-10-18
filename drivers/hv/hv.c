@@ -223,7 +223,7 @@ int hv_init(void)
 	/* See if the hypercall page is already set */
 	rdmsrl(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
 
-	virtaddr = __vmalloc(PAGE_SIZE, GFP_KERNEL, PAGE_KERNEL_RX);
+	virtaddr = vmalloc(PAGE_SIZE, GFP_KERNEL);
 
 	if (!virtaddr)
 		goto cleanup;
@@ -247,7 +247,7 @@ int hv_init(void)
 		union hv_x64_msr_hypercall_contents tsc_msr;
 		void *va_tsc;
 
-		va_tsc = __vmalloc(PAGE_SIZE, GFP_KERNEL, PAGE_KERNEL);
+		va_tsc = vmalloc(PAGE_SIZE, GFP_KERNEL);
 		if (!va_tsc)
 			goto cleanup;
 		hv_context.tsc_page = va_tsc;
