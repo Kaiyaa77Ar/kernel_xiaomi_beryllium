@@ -132,6 +132,14 @@ static int one_hundred = 100;
 static int __maybe_unused one_thousand = 1000;
 #ifdef CONFIG_SCHED_WALT
 static int two_million = 2000000;
+static int two_hundred_fifty_five = 255;
+/*
+ * CFS task prio range is [100 ... 139]. 120 is the default prio.
+ * RTG boost range is [100 ... 119] because boosting [120 .. 139] does
+ * not make sense. 99 means disabled and is the default value.
+ */
+static unsigned int min_cfs_boost_prio = 99;
+static unsigned int max_cfs_boost_prio = 119;
 #endif
 #ifdef CONFIG_PRINTK
 static int ten_thousand = 10000;
@@ -441,6 +449,33 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= sched_little_cluster_coloc_fmin_khz_handler,
 		.extra1		= &zero,
 		.extra2		= &two_million,
+	},
+	{
+		.procname	= "walt_rtg_cfs_boost_prio",
+		.data		= &sysctl_walt_rtg_cfs_boost_prio,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &min_cfs_boost_prio,
+		.extra2		= &max_cfs_boost_prio,
+	},
+	{
+		.procname	= "sched_prefer_spread",
+		.data		= &sysctl_sched_prefer_spread,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &two,
+	},
+	{
+		.procname	= "sched_task_unfilter_nr_windows",
+		.data		= &sysctl_sched_task_unfilter_nr_windows,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &two_hundred_fifty_five,
 	},
 #endif
 	{

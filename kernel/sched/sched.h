@@ -41,6 +41,7 @@ struct walt_sched_stats {
 	int nr_big_tasks;
 	u64 cumulative_runnable_avg;
 	u64 pred_demands_sum;
+	unsigned int nr_rtg_high_prio_tasks;
 };
 
 struct cpu_cycle {
@@ -2437,6 +2438,7 @@ struct related_thread_group {
 	struct list_head tasks;
 	struct list_head list;
 	struct sched_cluster *preferred_cluster;
+	bool skip_min;
 	struct rcu_head rcu;
 	u64 last_update;
 };
@@ -2699,6 +2701,12 @@ struct related_thread_group *task_related_thread_group(struct task_struct *p)
 	return rcu_dereference(p->grp);
 }
 
+static inline bool task_rtg_high_prio(struct task_struct *p)
+{
+	return task_in_related_thread_group(p) &&
+		(p->prio <= sysctl_walt_rtg_cfs_boost_prio);
+}
+
 #define PRED_DEMAND_DELTA ((s64)new_pred_demand - p->ravg.pred_demand)
 
 /* Is frequency of two cpus synchronized with each other? */
@@ -2833,6 +2841,14 @@ static inline enum sched_boost_policy task_boost_policy(struct task_struct *p)
 	return boost_on_big;
 }
 
+static inline bool task_placement_boost_enabled(struct task_struct *p)
+{
+	if (task_sched_boost(p))
+		return sched_boost_policy() != SCHED_BOOST_NONE;
+
+	return false;
+}
+
 extern void walt_map_freq_to_load(void);
 
 static inline bool is_min_capacity_cluster(struct sched_cluster *cluster)
@@ -2853,6 +2869,14 @@ static inline bool task_sched_boost(struct task_struct *p)
 static inline enum sched_boost_policy task_boost_policy(struct task_struct *p)
 {
 	return SCHED_BOOST_NONE;
+}
+static inline bool task_placement_boost_enabled(struct task_struct *p)
+{
+	return false;
+}
+static inline bool task_rtg_high_prio(struct task_struct *p)
+{
+	return false;
 }
 static inline void check_for_migration(struct rq *rq, struct task_struct *p) { }
 
