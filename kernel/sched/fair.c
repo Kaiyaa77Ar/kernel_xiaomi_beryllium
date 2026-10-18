@@ -7011,6 +7011,18 @@ static int cpu_util_wake(int cpu, struct task_struct *p)
 	return (util >= capacity) ? capacity : util;
 }
 
+static inline int per_task_boost(struct task_struct *p)
+{
+	if (p->boost_period) {
+		if (sched_clock() > p->boost_expires) {
+			p->boost_period = 0;
+			p->boost_expires = 0;
+			p->boost = 0;
+		}
+	}
+	return p->boost;
+}
+
 struct find_best_target_env {
 	struct cpumask *rtg_target;
 	bool need_idle;
