@@ -146,6 +146,10 @@ __read_mostly unsigned int sysctl_sched_cpu_high_irqload = (10 * NSEC_PER_MSEC);
 unsigned int sysctl_sched_walt_rotate_big_tasks;
 unsigned int walt_rotation_enabled;
 
+unsigned int sysctl_walt_rtg_cfs_boost_prio = 99; /* disabled by default */
+__read_mostly unsigned int sysctl_sched_prefer_spread;
+unsigned int sysctl_sched_task_unfilter_nr_windows = 10;
+
 /*
  * sched_window_stats_policy and sched_ravg_hist_size have a 'sysctl' copy
  * associated with them. This is required for atomic update of those variables
@@ -251,12 +255,19 @@ void inc_rq_walt_stats(struct rq *rq, struct task_struct *p)
 {
 	inc_nr_big_task(&rq->walt_stats, p);
 	walt_inc_cumulative_runnable_avg(rq, p);
+
+	p->rtg_high_prio = task_rtg_high_prio(p);
+	if (p->rtg_high_prio)
+		rq->walt_stats.nr_rtg_high_prio_tasks++;
 }
 
 void dec_rq_walt_stats(struct rq *rq, struct task_struct *p)
 {
 	dec_nr_big_task(&rq->walt_stats, p);
 	walt_dec_cumulative_runnable_avg(rq, p);
+
+	if (p->rtg_high_prio)
+		rq->walt_stats.nr_rtg_high_prio_tasks--;
 }
 
 void fixup_walt_sched_stats_common(struct rq *rq, struct task_struct *p,
@@ -1780,6 +1791,11 @@ static void update_history(struct rq *rq, struct task_struct *p,
 	p->ravg.coloc_demand = div64_u64(sum, sched_ravg_hist_size);
 	p->ravg.pred_demand = pred_demand;
 
+	if (demand > sysctl_sched_min_task_util_for_boost_colocation)
+		p->unfilter = sysctl_sched_task_unfilter_nr_windows;
+	else if (p->unfilter)
+		p->unfilter -= 1;
+
 done:
 	trace_sched_update_history(rq, p, runtime, samples, event);
 }
@@ -2059,6 +2075,7 @@ void init_new_task_load(struct task_struct *p)
 	for (i = 0; i < RAVG_HIST_SIZE_MAX; ++i)
 		p->ravg.sum_history[i] = init_load_windows;
 	p->misfit = false;
+	p->unfilter = sysctl_sched_task_unfilter_nr_windows;
 }
 
 /*
@@ -2661,6 +2678,7 @@ static void _set_preferred_cluster(struct related_thread_group *grp)
 
 	if (!sysctl_sched_is_big_little) {
 		grp->preferred_cluster = sched_cluster[0];
+		grp->skip_min = false;
 		return;
 	}
 
@@ -2691,6 +2709,7 @@ static void _set_preferred_cluster(struct related_thread_group *grp)
 
 	grp->preferred_cluster = best_cluster(grp,
 			combined_demand, group_boost);
+	grp->skip_min = !is_min_capacity_cluster(grp->preferred_cluster);
 	grp->last_update = sched_ktime_clock();
 	trace_sched_set_preferred_cluster(grp, combined_demand);
 }
@@ -2745,8 +2764,6 @@ unsigned int update_freq_aggregate_threshold(unsigned int threshold)
 
 #define ADD_TASK	0
 #define REM_TASK	1
-
-#define DEFAULT_CGROUP_COLOC_ID 1
 
 static inline struct related_thread_group*
 lookup_related_thread_group(unsigned int group_id)

@@ -303,6 +303,40 @@ extern void walt_rotate_work_init(void);
 extern void walt_rotation_checkpoint(int nr_big);
 extern unsigned int walt_rotation_enabled;
 
+#define DEFAULT_CGROUP_COLOC_ID 1
+
+static inline bool prefer_spread_on_idle(int cpu, bool new_ilb)
+{
+	switch (sysctl_sched_prefer_spread) {
+	case 1:
+		return is_min_capacity_cpu(cpu);
+	case 2:
+		return true;
+	case 3:
+		return (new_ilb && is_min_capacity_cpu(cpu));
+	case 4:
+		return new_ilb;
+	default:
+		return false;
+	}
+}
+
+static inline bool walt_should_kick_upmigrate(struct task_struct *p, int cpu)
+{
+	struct related_thread_group *rtg = p->grp;
+
+	if (rtg && rtg->id == DEFAULT_CGROUP_COLOC_ID &&
+			    rtg->skip_min && p->unfilter)
+		return is_min_capacity_cpu(cpu);
+
+	return false;
+}
+
+static inline unsigned int walt_nr_rtg_high_prio(int cpu)
+{
+	return cpu_rq(cpu)->walt_stats.nr_rtg_high_prio_tasks;
+}
+
 #else /* CONFIG_SCHED_WALT */
 
 static inline void walt_sched_init(struct rq *rq) { }
@@ -386,6 +420,21 @@ static inline int walt_start_cpu(int prev_cpu)
 }
 
 static inline u64 sched_irqload(int cpu)
+{
+	return 0;
+}
+
+static inline bool prefer_spread_on_idle(int cpu, bool new_ilb)
+{
+	return false;
+}
+
+static inline bool walt_should_kick_upmigrate(struct task_struct *p, int cpu)
+{
+	return false;
+}
+
+static inline unsigned int walt_nr_rtg_high_prio(int cpu)
 {
 	return 0;
 }
