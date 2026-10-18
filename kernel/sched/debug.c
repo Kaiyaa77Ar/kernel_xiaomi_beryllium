@@ -19,7 +19,7 @@
 #include <linux/debugfs.h>
 
 #include "sched.h"
-#include "walt.h"
+#include "walt/walt.h"
 
 static DEFINE_SPINLOCK(sched_debug_lock);
 

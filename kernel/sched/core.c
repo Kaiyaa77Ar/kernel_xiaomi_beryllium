@@ -89,14 +89,14 @@
 #endif
 
 #include "sched.h"
-#include "walt.h"
+#include "walt/walt.h"
 #include "../workqueue_internal.h"
 #include "../smpboot.h"
 #include "../time/tick-internal.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
-#include "walt.h"
+#include "walt/walt.h"
 
 ATOMIC_NOTIFIER_HEAD(load_alert_notifier_head);
 

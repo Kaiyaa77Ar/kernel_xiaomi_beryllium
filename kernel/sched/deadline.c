@@ -15,7 +15,7 @@
  *                    Fabio Checconi <fchecconi@gmail.com>
  */
 #include "sched.h"
-#include "walt.h"
+#include "walt/walt.h"
 
 #include <linux/slab.h>
 

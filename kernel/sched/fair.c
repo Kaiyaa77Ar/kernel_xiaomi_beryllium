@@ -34,7 +34,7 @@
 
 #include "sched.h"
 #include "tune.h"
-#include "walt.h"
+#include "walt/walt.h"
 #include <trace/events/sched.h>
 
 #ifdef CONFIG_SCHED_WALT
