@@ -6488,6 +6488,15 @@ static void build_perf_domains(const struct cpumask *cpu_map)
 
 	perf_domain_debug(cpu_map, pd);
 
+	/*
+	 * The EM is registered after the first sched_domain build, so the
+	 * capacity update in build_sched_domains() ran without it. Refresh
+	 * the capacity of the CPUs now that their perf. domains are known.
+	 */
+	if (pd)
+		for_each_cpu(i, cpu_map)
+			arch_update_cpu_capacity(i);
+
 	/* Attach the new list of performance domains to the root domain. */
 	tmp = rd->pd;
 	rcu_assign_pointer(rd->pd, pd);
