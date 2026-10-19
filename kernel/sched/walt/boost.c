@@ -22,11 +22,13 @@
  * boost is responsible for disabling it as well.
  */
 
-unsigned int sysctl_sched_boost;
+unsigned int sysctl_sched_boost; /* To/from userspace */
+unsigned int sched_boost_type; /* currently activated sched boost */
 static enum sched_boost_policy boost_policy;
 static enum sched_boost_policy boost_policy_dt = SCHED_BOOST_NONE;
 static DEFINE_MUTEX(boost_mutex);
 static unsigned int freq_aggr_threshold_backup;
+static bool freq_aggr_boosted;
 
 static inline void boost_kick(int cpu)
 {
@@ -103,52 +105,186 @@ enum sched_boost_policy sched_boost_policy(void)
 	return boost_policy;
 }
 
-static bool verify_boost_params(int old_val, int new_val)
+static bool verify_boost_params(int type)
 {
-	/*
-	 * Boost can only be turned on or off. There is no possiblity of
-	 * switching from one boost type to another or to set the same
-	 * kind of boost several times.
-	 */
-	return !(!!old_val == !!new_val);
+	return type >= RESTRAINED_BOOST_DISABLE && type <= RESTRAINED_BOOST;
 }
 
-static void _sched_set_boost(int old_val, int type)
+static void sched_no_boost_nop(void)
 {
-	switch (type) {
-	case NO_BOOST:
-		if (old_val == FULL_THROTTLE_BOOST)
-			core_ctl_set_boost(false);
-		else if (old_val == CONSERVATIVE_BOOST)
-			restore_cgroup_boost_settings();
-		else
-			update_freq_aggregate_threshold(
-				freq_aggr_threshold_backup);
-		break;
+}
 
-	case FULL_THROTTLE_BOOST:
-		core_ctl_set_boost(true);
-		boost_kick_cpus();
-		break;
+static void sched_full_throttle_boost_enter(void)
+{
+	core_ctl_set_boost(true);
+	boost_kick_cpus();
+}
 
-	case CONSERVATIVE_BOOST:
-		update_cgroup_boost_settings();
-		boost_kick_cpus();
-		break;
+static void sched_full_throttle_boost_exit(void)
+{
+	core_ctl_set_boost(false);
+}
 
-	case RESTRAINED_BOOST:
-		freq_aggr_threshold_backup =
-			update_freq_aggregate_threshold(1);
-		break;
+static void sched_conservative_boost_enter(void)
+{
+	update_cgroup_boost_settings();
+	boost_kick_cpus();
+}
 
-	default:
-		WARN_ON(1);
+static void sched_conservative_boost_exit(void)
+{
+	restore_cgroup_boost_settings();
+}
+
+static void sched_restrained_boost_enter(void)
+{
+	if (freq_aggr_boosted)
 		return;
+
+	freq_aggr_boosted = true;
+	freq_aggr_threshold_backup = update_freq_aggregate_threshold(1);
+}
+
+static void sched_restrained_boost_exit(void)
+{
+	if (!freq_aggr_boosted)
+		return;
+
+	freq_aggr_boosted = false;
+	update_freq_aggregate_threshold(freq_aggr_threshold_backup);
+}
+
+struct sched_boost_data {
+	int refcount;
+	void (*enter)(void);
+	void (*exit)(void);
+};
+
+static struct sched_boost_data sched_boosts[] = {
+	[NO_BOOST] = {
+		.refcount = 0,
+		.enter = sched_no_boost_nop,
+		.exit = sched_no_boost_nop,
+	},
+	[FULL_THROTTLE_BOOST] = {
+		.refcount = 0,
+		.enter = sched_full_throttle_boost_enter,
+		.exit = sched_full_throttle_boost_exit,
+	},
+	[CONSERVATIVE_BOOST] = {
+		.refcount = 0,
+		.enter = sched_conservative_boost_enter,
+		.exit = sched_conservative_boost_exit,
+	},
+	[RESTRAINED_BOOST] = {
+		.refcount = 0,
+		.enter = sched_restrained_boost_enter,
+		.exit = sched_restrained_boost_exit,
+	},
+};
+
+#define SCHED_BOOST_START FULL_THROTTLE_BOOST
+#define SCHED_BOOST_END (RESTRAINED_BOOST + 1)
+
+static int sched_effective_boost(void)
+{
+	int i;
+
+	/*
+	 * The boosts are sorted in descending order by
+	 * priority.
+	 */
+	for (i = SCHED_BOOST_START; i < SCHED_BOOST_END; i++) {
+		if (sched_boosts[i].refcount >= 1)
+			return i;
 	}
 
-	set_boost_policy(type);
-	sysctl_sched_boost = type;
-	trace_sched_set_boost(type);
+	return NO_BOOST;
+}
+
+static void sched_boost_disable(int type)
+{
+	struct sched_boost_data *sb = &sched_boosts[type];
+	int next_boost, prev_boost = sched_boost_type;
+
+	if (sb->refcount <= 0)
+		return;
+
+	sb->refcount--;
+
+	if (sb->refcount)
+		return;
+
+	next_boost = sched_effective_boost();
+	if (next_boost == prev_boost)
+		return;
+	/*
+	 * This boost's refcount becomes zero, so it must
+	 * be disabled. Disable it first and then apply
+	 * the next boost.
+	 */
+	sched_boosts[prev_boost].exit();
+	sched_boosts[next_boost].enter();
+}
+
+static void sched_boost_enable(int type)
+{
+	struct sched_boost_data *sb = &sched_boosts[type];
+	int next_boost, prev_boost = sched_boost_type;
+
+	sb->refcount++;
+
+	if (sb->refcount != 1)
+		return;
+
+	/*
+	 * This boost enable request did not come before.
+	 * Take this new request and find the next boost
+	 * by aggregating all the enabled boosts. If there
+	 * is a change, disable the previous boost and enable
+	 * the next boost.
+	 */
+
+	next_boost = sched_effective_boost();
+	if (next_boost == prev_boost)
+		return;
+
+	sched_boosts[prev_boost].exit();
+	sched_boosts[next_boost].enter();
+}
+
+static void sched_boost_disable_all(void)
+{
+	int i;
+
+	for (i = SCHED_BOOST_START; i < SCHED_BOOST_END; i++) {
+		if (sched_boosts[i].refcount > 0) {
+			sched_boosts[i].exit();
+			sched_boosts[i].refcount = 0;
+		}
+	}
+}
+
+static void _sched_set_boost(int type)
+{
+	if (type == 0)
+		sched_boost_disable_all();
+	else if (type > 0)
+		sched_boost_enable(type);
+	else
+		sched_boost_disable(-type);
+
+	/*
+	 * sysctl_sched_boost holds the boost request from
+	 * user space which could be different from the
+	 * effectively enabled boost. Update the effective
+	 * boost here.
+	 */
+
+	sched_boost_type = sched_effective_boost();
+	sysctl_sched_boost = sched_boost_type;
+	set_boost_policy(sysctl_sched_boost);
+	trace_sched_set_boost(sysctl_sched_boost);
 }
 
 void sched_boost_parse_dt(void)
@@ -173,12 +309,10 @@ int sched_set_boost(int type)
 	int ret = 0;
 
 	mutex_lock(&boost_mutex);
-
-	if (verify_boost_params(sysctl_sched_boost, type))
-		_sched_set_boost(sysctl_sched_boost, type);
+	if (verify_boost_params(type))
+		_sched_set_boost(type);
 	else
 		ret = -EINVAL;
-
 	mutex_unlock(&boost_mutex);
 	return ret;
 }
@@ -189,28 +323,18 @@ int sched_boost_handler(struct ctl_table *table, int write,
 {
 	int ret;
 	unsigned int *data = (unsigned int *)table->data;
-	unsigned int old_val;
 
 	mutex_lock(&boost_mutex);
 
-	old_val = *data;
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 
 	if (ret || !write)
 		goto done;
 
-	if (verify_boost_params(old_val, *data)) {
-		_sched_set_boost(old_val, *data);
-	} else {
-		/*
-		 * Only return error when switching from one boost type
-		 * to another.
-		 */
-		if (old_val != *data) {
-			*data = old_val;
-			ret = -EINVAL;
-		}
-	}
+	if (verify_boost_params(*data))
+		_sched_set_boost(*data);
+	else
+		ret = -EINVAL;
 
 done:
 	mutex_unlock(&boost_mutex);
@@ -219,5 +343,5 @@ done:
 
 int sched_boost(void)
 {
-	return sysctl_sched_boost;
+	return sched_boost_type;
 }
