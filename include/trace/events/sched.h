@@ -130,28 +130,28 @@ static inline s64 __rq_update_sum(struct rq *rq, bool curr, bool new)
 {
 	if (curr)
 		if (new)
-			return rq->nt_curr_runnable_sum;
+			return rq->wrq.nt_curr_runnable_sum;
 		else
-			return rq->curr_runnable_sum;
+			return rq->wrq.curr_runnable_sum;
 	else
 		if (new)
-			return rq->nt_prev_runnable_sum;
+			return rq->wrq.nt_prev_runnable_sum;
 		else
-			return rq->prev_runnable_sum;
+			return rq->wrq.prev_runnable_sum;
 }
 
 static inline s64 __grp_update_sum(struct rq *rq, bool curr, bool new)
 {
 	if (curr)
 		if (new)
-			return rq->grp_time.nt_curr_runnable_sum;
+			return rq->wrq.grp_time.nt_curr_runnable_sum;
 		else
-			return rq->grp_time.curr_runnable_sum;
+			return rq->wrq.grp_time.curr_runnable_sum;
 	else
 		if (new)
-			return rq->grp_time.nt_prev_runnable_sum;
+			return rq->wrq.grp_time.nt_prev_runnable_sum;
 		else
-			return rq->grp_time.prev_runnable_sum;
+			return rq->wrq.grp_time.prev_runnable_sum;
 }
 
 static inline s64
@@ -245,7 +245,7 @@ TRACE_EVENT(sched_update_history,
 		__entry->pred_demand     = p->ravg.pred_demand;
 		memcpy(__entry->hist, p->ravg.sum_history,
 					RAVG_HIST_SIZE_MAX * sizeof(u32));
-		__entry->nr_big_tasks   = rq->walt_stats.nr_big_tasks;
+		__entry->nr_big_tasks   = rq->wrq.walt_stats.nr_big_tasks;
 		__entry->cpu            = rq->cpu;
 	),
 
@@ -340,8 +340,8 @@ TRACE_EVENT(sched_update_task_ravg,
 
 	TP_fast_assign(
 		__entry->wallclock      = wallclock;
-		__entry->win_start      = rq->window_start;
-		__entry->delta          = (wallclock - rq->window_start);
+		__entry->win_start      = rq->wrq.window_start;
+		__entry->delta          = (wallclock - rq->wrq.window_start);
 		__entry->evt            = evt;
 		__entry->cpu            = rq->cpu;
 		__entry->cur_pid        = rq->curr->pid;
@@ -355,8 +355,8 @@ TRACE_EVENT(sched_update_task_ravg,
 		__entry->sum            = p->ravg.sum;
 		__entry->irqtime        = irqtime;
 		__entry->pred_demand     = p->ravg.pred_demand;
-		__entry->rq_cs          = rq->curr_runnable_sum;
-		__entry->rq_ps          = rq->prev_runnable_sum;
+		__entry->rq_cs          = rq->wrq.curr_runnable_sum;
+		__entry->rq_ps          = rq->wrq.prev_runnable_sum;
 		__entry->grp_cs = cpu_time ? cpu_time->curr_runnable_sum : 0;
 		__entry->grp_ps = cpu_time ? cpu_time->prev_runnable_sum : 0;
 		__entry->grp_nt_cs = cpu_time ? cpu_time->nt_curr_runnable_sum : 0;
@@ -365,11 +365,11 @@ TRACE_EVENT(sched_update_task_ravg,
 		__entry->prev_window	= p->ravg.prev_window;
 		__window_data(__get_dynamic_array(curr_sum), p->ravg.curr_window_cpu);
 		__window_data(__get_dynamic_array(prev_sum), p->ravg.prev_window_cpu);
-		__entry->nt_cs		= rq->nt_curr_runnable_sum;
-		__entry->nt_ps		= rq->nt_prev_runnable_sum;
+		__entry->nt_cs		= rq->wrq.nt_curr_runnable_sum;
+		__entry->nt_ps		= rq->wrq.nt_prev_runnable_sum;
 		__entry->active_windows	= p->ravg.active_windows;
-		__entry->curr_top	= rq->curr_top;
-		__entry->prev_top	= rq->prev_top;
+		__entry->curr_top	= rq->wrq.curr_top;
+		__entry->prev_top	= rq->wrq.prev_top;
 	),
 
 	TP_printk("wc %llu ws %llu delta %llu event %s cpu %d cur_freq %u cur_pid %d task %d (%s) ms %llu delta %llu demand %u coloc_demand: %u sum %u irqtime %llu pred_demand %u rq_cs %llu rq_ps %llu cur_window %u (%s) prev_window %u (%s) nt_cs %llu nt_ps %llu active_wins %u grp_cs %lld grp_ps %lld, grp_nt_cs %llu, grp_nt_ps: %llu curr_top %u prev_top %u",
@@ -418,8 +418,8 @@ TRACE_EVENT(sched_update_task_ravg_mini,
 
 	TP_fast_assign(
 		__entry->wallclock      = wallclock;
-		__entry->win_start      = rq->window_start;
-		__entry->delta          = (wallclock - rq->window_start);
+		__entry->win_start      = rq->wrq.window_start;
+		__entry->delta          = (wallclock - rq->wrq.window_start);
 		__entry->evt            = evt;
 		__entry->cpu            = rq->cpu;
 		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
@@ -427,8 +427,8 @@ TRACE_EVENT(sched_update_task_ravg_mini,
 		__entry->mark_start     = p->ravg.mark_start;
 		__entry->delta_m        = (wallclock - p->ravg.mark_start);
 		__entry->demand         = p->ravg.demand;
-		__entry->rq_cs          = rq->curr_runnable_sum;
-		__entry->rq_ps          = rq->prev_runnable_sum;
+		__entry->rq_cs          = rq->wrq.curr_runnable_sum;
+		__entry->rq_ps          = rq->wrq.prev_runnable_sum;
 		__entry->grp_cs = cpu_time ? cpu_time->curr_runnable_sum : 0;
 		__entry->grp_ps = cpu_time ? cpu_time->prev_runnable_sum : 0;
 		__entry->curr_window	= p->ravg.curr_window;
@@ -570,15 +570,15 @@ DECLARE_EVENT_CLASS(sched_cpu_load,
 		__entry->cpu			= rq->cpu;
 		__entry->idle			= idle;
 		__entry->nr_running		= rq->nr_running;
-		__entry->nr_big_tasks		= rq->walt_stats.nr_big_tasks;
+		__entry->nr_big_tasks		= rq->wrq.walt_stats.nr_big_tasks;
 		__entry->load_scale_factor	= cpu_load_scale_factor(rq->cpu);
 		__entry->capacity		= cpu_capacity(rq->cpu);
-		__entry->cumulative_runnable_avg = rq->walt_stats.cumulative_runnable_avg;
+		__entry->cumulative_runnable_avg = rq->wrq.walt_stats.cumulative_runnable_avg;
 		__entry->irqload		= irqload;
 		__entry->max_freq		= cpu_max_freq(rq->cpu);
 		__entry->power_cost		= power_cost;
-		__entry->cstate			= rq->cstate;
-		__entry->dstate			= rq->cluster->dstate;
+		__entry->cstate			= rq->wrq.cstate;
+		__entry->dstate			= rq->wrq.cluster->dstate;
 	),
 
 	TP_printk("cpu %u idle %d nr_run %u nr_big %u lsf %u capacity %u cr_avg %llu irqload %llu fmax %u power_cost %u cstate %d dstate %d",
@@ -627,15 +627,15 @@ TRACE_EVENT(sched_load_to_gov,
 	TP_fast_assign(
 		__entry->cpu		= cpu_of(rq);
 		__entry->policy		= policy;
-		__entry->ed_task_pid	= rq->ed_task ? rq->ed_task->pid : -1;
+		__entry->ed_task_pid	= rq->wrq.ed_task ? rq->wrq.ed_task->pid : -1;
 		__entry->aggr_grp_load	= aggr_grp_load;
 		__entry->freq_aggr_thresh = freq_aggr_thresh;
 		__entry->tt_load	= tt_load;
-		__entry->rq_ps		= rq->prev_runnable_sum;
-		__entry->grp_rq_ps	= rq->grp_time.prev_runnable_sum;
-		__entry->nt_ps		= rq->nt_prev_runnable_sum;
-		__entry->grp_nt_ps	= rq->grp_time.nt_prev_runnable_sum;
-		__entry->pl		= rq->walt_stats.pred_demands_sum;
+		__entry->rq_ps		= rq->wrq.prev_runnable_sum;
+		__entry->grp_rq_ps	= rq->wrq.grp_time.prev_runnable_sum;
+		__entry->nt_ps		= rq->wrq.nt_prev_runnable_sum;
+		__entry->grp_nt_ps	= rq->wrq.grp_time.nt_prev_runnable_sum;
+		__entry->pl		= rq->wrq.walt_stats.pred_demands_sum;
 		__entry->load		= load;
 		__entry->big_task_rotation = big_task_rotation;
 		__entry->sysctl_sched_little_cluster_coloc_fmin_khz =
@@ -1500,7 +1500,7 @@ TRACE_EVENT(sched_load_avg_cpu,
 		__entry->util_avg_pelt	= cfs_rq->avg.util_avg;
 		__entry->util_avg_walt	= 0;
 #ifdef CONFIG_SCHED_WALT
-		__entry->util_avg_walt = div64_ul(cpu_rq(cpu)->prev_runnable_sum,
+		__entry->util_avg_walt = div64_ul(cpu_rq(cpu)->wrq.prev_runnable_sum,
 					 sched_ravg_window >> SCHED_CAPACITY_SHIFT);
 		if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
 			__entry->util_avg		= __entry->util_avg_walt;

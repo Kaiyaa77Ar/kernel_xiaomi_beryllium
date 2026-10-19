@@ -87,9 +87,9 @@ walt_adjust_nr_big_tasks(struct rq *rq, int delta, bool inc)
 		return;
 
 	sched_update_nr_prod(cpu_of(rq), 0, true);
-	rq->walt_stats.nr_big_tasks += inc ? delta : -delta;
+	rq->wrq.walt_stats.nr_big_tasks += inc ? delta : -delta;
 
-	BUG_ON(rq->walt_stats.nr_big_tasks < 0);
+	BUG_ON(rq->wrq.walt_stats.nr_big_tasks < 0);
 }
 
 static inline void
@@ -112,7 +112,7 @@ walt_inc_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
 	if (sched_disable_window_stats)
 		return;
 
-	fixup_cumulative_runnable_avg(&rq->walt_stats, p->ravg.demand,
+	fixup_cumulative_runnable_avg(&rq->wrq.walt_stats, p->ravg.demand,
 				      p->ravg.pred_demand);
 
 	/*
@@ -122,7 +122,7 @@ walt_inc_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
 	 *     prio/cgroup/class change.
 	 * (2) task is waking for the first time in this window.
 	 */
-	if (p->on_rq || (p->last_sleep_ts < rq->window_start))
+	if (p->on_rq || (p->last_sleep_ts < rq->wrq.window_start))
 		walt_fixup_cum_window_demand(rq, p->ravg.demand);
 }
 
@@ -132,7 +132,7 @@ walt_dec_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
 	if (sched_disable_window_stats)
 		return;
 
-	fixup_cumulative_runnable_avg(&rq->walt_stats, -(s64)p->ravg.demand,
+	fixup_cumulative_runnable_avg(&rq->wrq.walt_stats, -(s64)p->ravg.demand,
 				      -(s64)p->ravg.pred_demand);
 
 	/*
@@ -168,16 +168,16 @@ static inline u64 sched_irqload(int cpu)
 	struct rq *rq = cpu_rq(cpu);
 	s64 delta;
 
-	delta = get_jiffies_64() - rq->irqload_ts;
+	delta = get_jiffies_64() - rq->wrq.irqload_ts;
 	/*
-	 * Current context can be preempted by irq and rq->irqload_ts can be
+	 * Current context can be preempted by irq and rq->wrq.irqload_ts can be
 	 * updated by irq context so that delta can be negative.
 	 * But this is okay and we can safely return as this means there
 	 * was recent irq occurrence.
 	 */
 
 	if (delta < SCHED_HIGH_IRQ_TIMEOUT)
-		return rq->avg_irqload;
+		return rq->wrq.avg_irqload;
 	else
 		return 0;
 }
@@ -194,7 +194,7 @@ static inline int exiting_task(struct task_struct *p)
 
 static inline struct sched_cluster *cpu_cluster(int cpu)
 {
-	return cpu_rq(cpu)->cluster;
+	return cpu_rq(cpu)->wrq.cluster;
 }
 
 static inline u64
@@ -230,7 +230,7 @@ static inline u32 cpu_cycles_to_freq(u64 cycles, u64 period)
 
 static inline unsigned int cpu_cur_freq(int cpu)
 {
-	return cpu_rq(cpu)->cluster->cur_freq;
+	return cpu_rq(cpu)->wrq.cluster->cur_freq;
 }
 
 static inline void
@@ -282,7 +282,7 @@ static inline void assign_cluster_ids(struct list_head *head)
 
 static inline int same_cluster(int src_cpu, int dst_cpu)
 {
-	return cpu_rq(src_cpu)->cluster == cpu_rq(dst_cpu)->cluster;
+	return cpu_rq(src_cpu)->wrq.cluster == cpu_rq(dst_cpu)->wrq.cluster;
 }
 
 void walt_irq_work(struct irq_work *irq_work);
@@ -334,7 +334,7 @@ static inline bool walt_should_kick_upmigrate(struct task_struct *p, int cpu)
 
 static inline unsigned int walt_nr_rtg_high_prio(int cpu)
 {
-	return cpu_rq(cpu)->walt_stats.nr_rtg_high_prio_tasks;
+	return cpu_rq(cpu)->wrq.walt_stats.nr_rtg_high_prio_tasks;
 }
 
 #else /* CONFIG_SCHED_WALT */
