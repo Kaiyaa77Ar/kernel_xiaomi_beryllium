@@ -1263,6 +1263,10 @@ enum sched_boost_policy {
 #define FULL_THROTTLE_BOOST 1
 #define CONSERVATIVE_BOOST 2
 #define RESTRAINED_BOOST 3
+#define FULL_THROTTLE_BOOST_DISABLE -1
+#define CONSERVATIVE_BOOST_DISABLE -2
+#define RESTRAINED_BOOST_DISABLE -3
+#define MAX_NUM_BOOST_TYPE (RESTRAINED_BOOST + 1)
 
 /*
  * Returns the rq capacity of any rq in a group. This does not play
@@ -2735,6 +2739,7 @@ static inline int same_freq_domain(int src_cpu, int dst_cpu)
 #define	CPU_RESERVED	1
 
 extern int sched_boost(void);
+extern unsigned int sched_boost_type;
 extern int preferred_cluster(struct walt_sched_cluster *cluster,
 						struct task_struct *p);
 extern struct walt_sched_cluster *rq_cluster(struct rq *rq);
