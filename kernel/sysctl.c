@@ -134,6 +134,7 @@ static int __maybe_unused one_thousand = 1000;
 static int two_million = 2000000;
 static int two_hundred_fifty_five = 255;
 static unsigned int ns_per_sec = NSEC_PER_SEC;
+static unsigned int one_hundred_thousand = 100000;
 /*
  * CFS task prio range is [100 ... 139]. 120 is the default prio.
  * RTG boost range is [100 ... 119] because boosting [120 .. 139] does
@@ -526,6 +527,15 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_douintvec_minmax_schedhyst,
 		.extra1		= &zero,
 		.extra2		= &ns_per_sec,
+	},
+	{
+		.procname	= "sched_coloc_busy_hyst_max_ms",
+		.data		= &sysctl_sched_coloc_busy_hyst_max_ms,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec_minmax_schedhyst,
+		.extra1		= &zero,
+		.extra2		= &one_hundred_thousand,
 	},
 #endif
 	{

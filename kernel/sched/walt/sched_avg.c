@@ -38,8 +38,12 @@ unsigned int sysctl_sched_busy_hyst_enable_cpus;
 unsigned int sysctl_sched_busy_hyst;
 unsigned int sysctl_sched_coloc_busy_hyst_enable_cpus = 112;
 unsigned int sysctl_sched_coloc_busy_hyst = 39000000;
+unsigned int sysctl_sched_coloc_busy_hyst_max_ms = 5000;
 static DEFINE_PER_CPU(atomic64_t, busy_hyst_end_time) = ATOMIC64_INIT(0);
+#endif
 static DEFINE_PER_CPU(u64, hyst_time);
+#ifdef CONFIG_SCHED_WALT
+#define MAX_RTGB_TIME (sysctl_sched_coloc_busy_hyst_max_ms * NSEC_PER_MSEC)
 #endif
 
 #define DIV64_U64_ROUNDUP(X, Y) div64_u64((X) + (Y - 1), Y)
@@ -59,6 +63,9 @@ void sched_get_nr_running_avg(int *avg, int *iowait_avg, int *big_avg,
 	u64 curr_time = sched_clock();
 	u64 diff = curr_time - last_get_time;
 	u64 tmp_avg = 0, tmp_iowait = 0, tmp_big_avg = 0;
+#ifdef CONFIG_SCHED_WALT
+	bool any_hyst_time = false;
+#endif
 
 	*avg = 0;
 	*iowait_avg = 0;
@@ -105,6 +112,17 @@ void sched_get_nr_running_avg(int *avg, int *iowait_avg, int *big_avg,
 		spin_unlock_irqrestore(&per_cpu(nr_lock, cpu), flags);
 	}
 
+#ifdef CONFIG_SCHED_WALT
+	for_each_possible_cpu(cpu) {
+		if (per_cpu(hyst_time, cpu)) {
+			any_hyst_time = true;
+			break;
+		}
+	}
+	if (any_hyst_time && get_rtgb_active_time() >= MAX_RTGB_TIME)
+		sched_update_hyst_times();
+#endif
+
 	diff = curr_time - last_get_time;
 	last_get_time = curr_time;
 
@@ -136,7 +154,8 @@ void sched_update_hyst_times(void)
 	bool rtgb_active;
 	int cpu;
 
-	rtgb_active = is_rtgb_active() && sched_boost() != CONSERVATIVE_BOOST;
+	rtgb_active = is_rtgb_active() && sched_boost() != CONSERVATIVE_BOOST
+			&& get_rtgb_active_time() < MAX_RTGB_TIME;
 
 	for_each_possible_cpu(cpu) {
 		std_time = (BIT(cpu)

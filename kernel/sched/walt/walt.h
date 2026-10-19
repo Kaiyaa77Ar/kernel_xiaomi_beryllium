@@ -441,6 +441,11 @@ static inline unsigned int walt_nr_rtg_high_prio(int cpu)
 {
 	return 0;
 }
+
+static inline u64 get_rtgb_active_time(void)
+{
+	return 0;
+}
 #endif /* CONFIG_SCHED_WALT */
 
 #define walt_cpu_high_irqload(cpu) sched_cpu_high_irqload(cpu)
