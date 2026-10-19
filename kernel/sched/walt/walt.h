@@ -17,6 +17,7 @@
 #ifdef CONFIG_SCHED_WALT
 
 #include <linux/sched/sysctl.h>
+#include <linux/sched/core_ctl.h>
 
 #define WINDOW_STATS_RECENT		0
 #define WINDOW_STATS_MAX		1
@@ -304,6 +305,7 @@ static inline void walt_update_last_enqueue(struct task_struct *p)
 }
 extern void walt_rotate_work_init(void);
 extern void walt_rotation_checkpoint(int nr_big);
+extern void walt_fill_ta_data(struct core_ctl_notif_data *data);
 extern unsigned int walt_rotation_enabled;
 
 #define DEFAULT_CGROUP_COLOC_ID 1
