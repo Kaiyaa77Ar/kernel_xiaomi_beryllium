@@ -58,7 +58,7 @@ walt_fixup_cumulative_runnable_avg(struct rq *rq,
 				   struct task_struct *p, u64 new_task_load)
 {
 	s64 task_load_delta = (s64)new_task_load - task_load(p);
-	struct walt_sched_stats *stats = &rq->walt_stats;
+	struct walt_sched_stats *stats = &rq->wrq.walt_stats;
 
 	stats->cumulative_runnable_avg += task_load_delta;
 	if ((s64)stats->cumulative_runnable_avg < 0)
@@ -254,21 +254,21 @@ early_param("sched_predl", set_sched_predl);
 
 void inc_rq_walt_stats(struct rq *rq, struct task_struct *p)
 {
-	inc_nr_big_task(&rq->walt_stats, p);
+	inc_nr_big_task(&rq->wrq.walt_stats, p);
 	walt_inc_cumulative_runnable_avg(rq, p);
 
 	p->rtg_high_prio = task_rtg_high_prio(p);
 	if (p->rtg_high_prio)
-		rq->walt_stats.nr_rtg_high_prio_tasks++;
+		rq->wrq.walt_stats.nr_rtg_high_prio_tasks++;
 }
 
 void dec_rq_walt_stats(struct rq *rq, struct task_struct *p)
 {
-	dec_nr_big_task(&rq->walt_stats, p);
+	dec_nr_big_task(&rq->wrq.walt_stats, p);
 	walt_dec_cumulative_runnable_avg(rq, p);
 
 	if (p->rtg_high_prio)
-		rq->walt_stats.nr_rtg_high_prio_tasks--;
+		rq->wrq.walt_stats.nr_rtg_high_prio_tasks--;
 }
 
 void fixup_walt_sched_stats_common(struct rq *rq, struct task_struct *p,
@@ -277,7 +277,7 @@ void fixup_walt_sched_stats_common(struct rq *rq, struct task_struct *p,
 	s64 task_load_delta = (s64)new_task_load - task_load(p);
 	s64 pred_demand_delta = PRED_DEMAND_DELTA;
 
-	fixup_cumulative_runnable_avg(&rq->walt_stats, task_load_delta,
+	fixup_cumulative_runnable_avg(&rq->wrq.walt_stats, task_load_delta,
 				      pred_demand_delta);
 
 	walt_fixup_cum_window_demand(rq, task_load_delta);
@@ -288,7 +288,7 @@ void fixup_walt_sched_stats_common(struct rq *rq, struct task_struct *p,
  *
  * CPU demand of tasks from various related groups is aggregated per-cluster and
  * added to the "max_busy_cpu" in that cluster, where max_busy_cpu is determined
- * by just rq->prev_runnable_sum.
+ * by just rq->wrq.prev_runnable_sum.
  *
  * Some examples follow, which assume:
  *	Cluster0 = CPU0-3, Cluster1 = CPU4-7
@@ -333,17 +333,17 @@ update_window_start(struct rq *rq, u64 wallclock, int event)
 {
 	s64 delta;
 	int nr_windows;
-	u64 old_window_start = rq->window_start;
+	u64 old_window_start = rq->wrq.window_start;
 
-	delta = wallclock - rq->window_start;
+	delta = wallclock - rq->wrq.window_start;
 	BUG_ON(delta < 0);
 	if (delta < sched_ravg_window)
 		return old_window_start;
 
 	nr_windows = div64_u64(delta, sched_ravg_window);
-	rq->window_start += (u64)nr_windows * (u64)sched_ravg_window;
+	rq->wrq.window_start += (u64)nr_windows * (u64)sched_ravg_window;
 
-	rq->cum_window_demand = rq->walt_stats.cumulative_runnable_avg;
+	rq->wrq.cum_window_demand = rq->wrq.walt_stats.cumulative_runnable_avg;
 
 	return old_window_start;
 }
@@ -376,12 +376,12 @@ static inline u64 read_cycle_counter(int cpu, u64 wallclock)
 {
 	struct rq *rq = cpu_rq(cpu);
 
-	if (rq->last_cc_update != wallclock) {
-		rq->cycles = cpu_cycle_counter_cb.get_cpu_cycle_counter(cpu);
-		rq->last_cc_update = wallclock;
+	if (rq->wrq.last_cc_update != wallclock) {
+		rq->wrq.cycles = cpu_cycle_counter_cb.get_cpu_cycle_counter(cpu);
+		rq->wrq.last_cc_update = wallclock;
 	}
 
-	return rq->cycles;
+	return rq->wrq.cycles;
 }
 
 static void update_task_cpu_cycles(struct task_struct *p, int cpu,
@@ -393,8 +393,8 @@ static void update_task_cpu_cycles(struct task_struct *p, int cpu,
 
 void clear_ed_task(struct task_struct *p, struct rq *rq)
 {
-	if (p == rq->ed_task)
-		rq->ed_task = NULL;
+	if (p == rq->wrq.ed_task)
+		rq->wrq.ed_task = NULL;
 }
 
 bool early_detection_notify(struct rq *rq, u64 wallclock)
@@ -402,7 +402,7 @@ bool early_detection_notify(struct rq *rq, u64 wallclock)
 	struct task_struct *p;
 	int loop_max = 10;
 
-	rq->ed_task = NULL;
+	rq->wrq.ed_task = NULL;
 
 	if ((!walt_rotation_enabled && sched_boost_policy() ==
 			SCHED_BOOST_NONE) || !rq->cfs.h_nr_running)
@@ -413,7 +413,7 @@ bool early_detection_notify(struct rq *rq, u64 wallclock)
 			break;
 
 		if (wallclock - p->last_wake_ts >= EARLY_DETECTION_DURATION) {
-			rq->ed_task = p;
+			rq->wrq.ed_task = p;
 			return 1;
 		}
 
@@ -427,7 +427,7 @@ void sched_account_irqstart(int cpu, struct task_struct *curr, u64 wallclock)
 {
 	struct rq *rq = cpu_rq(cpu);
 
-	if (!rq->window_start || sched_disable_window_stats)
+	if (!rq->wrq.window_start || sched_disable_window_stats)
 		return;
 
 	/*
@@ -456,7 +456,7 @@ unsigned int nr_eligible_big_tasks(int cpu)
 	struct rq *rq = cpu_rq(cpu);
 
 	if (!is_max_capacity_cpu(cpu))
-		return rq->walt_stats.nr_big_tasks;
+		return rq->wrq.walt_stats.nr_big_tasks;
 
 	return rq->nr_running;
 }
@@ -504,23 +504,23 @@ void sched_account_irqtime(int cpu, struct task_struct *curr,
 		update_task_ravg(curr, rq, IRQ_UPDATE, sched_ktime_clock(),
 				 delta);
 
-	nr_windows = cur_jiffies_ts - rq->irqload_ts;
+	nr_windows = cur_jiffies_ts - rq->wrq.irqload_ts;
 
 	if (nr_windows) {
 		if (nr_windows < 10) {
 			/* Decay CPU's irqload by 3/4 for each window. */
-			rq->avg_irqload *= (3 * nr_windows);
-			rq->avg_irqload = div64_u64(rq->avg_irqload,
+			rq->wrq.avg_irqload *= (3 * nr_windows);
+			rq->wrq.avg_irqload = div64_u64(rq->wrq.avg_irqload,
 						    4 * nr_windows);
 		} else {
-			rq->avg_irqload = 0;
+			rq->wrq.avg_irqload = 0;
 		}
-		rq->avg_irqload += rq->cur_irqload;
-		rq->cur_irqload = 0;
+		rq->wrq.avg_irqload += rq->wrq.cur_irqload;
+		rq->wrq.cur_irqload = 0;
 	}
 
-	rq->cur_irqload += delta;
-	rq->irqload_ts = cur_jiffies_ts;
+	rq->wrq.cur_irqload += delta;
+	rq->wrq.irqload_ts = cur_jiffies_ts;
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
 
@@ -531,13 +531,13 @@ void sched_account_irqtime(int cpu, struct task_struct *curr,
  */
 static u32  top_task_load(struct rq *rq)
 {
-	int index = rq->prev_top;
-	u8 prev = 1 - rq->curr_table;
+	int index = rq->wrq.prev_top;
+	u8 prev = 1 - rq->wrq.curr_table;
 
 	if (!index) {
 		int msb = NUM_LOAD_INDICES - 1;
 
-		if (!test_bit(msb, rq->top_tasks_bitmap[prev]))
+		if (!test_bit(msb, rq->wrq.top_tasks_bitmap[prev]))
 			return 0;
 		else
 			return sched_load_granule;
@@ -552,20 +552,20 @@ u64 freq_policy_load(struct rq *rq)
 {
 	unsigned int reporting_policy = sysctl_sched_freq_reporting_policy;
 	int freq_aggr_thresh = sched_freq_aggregate_threshold;
-	struct sched_cluster *cluster = rq->cluster;
+	struct sched_cluster *cluster = rq->wrq.cluster;
 	u64 aggr_grp_load = cluster->aggr_grp_load;
 	u64 load, tt_load = 0;
 	u64 coloc_boost_load = cluster->coloc_boost_load;
 
-	if (rq->ed_task != NULL) {
+	if (rq->wrq.ed_task != NULL) {
 		load = sched_ravg_window;
 		goto done;
 	}
 
 	if (aggr_grp_load > freq_aggr_thresh)
-		load = rq->prev_runnable_sum + aggr_grp_load;
+		load = rq->wrq.prev_runnable_sum + aggr_grp_load;
 	else
-		load = rq->prev_runnable_sum + rq->grp_time.prev_runnable_sum;
+		load = rq->wrq.prev_runnable_sum + rq->wrq.grp_time.prev_runnable_sum;
 
 	if (coloc_boost_load)
 		load = max_t(u64, load, coloc_boost_load);
@@ -601,35 +601,35 @@ done:
  */
 static inline void account_load_subtractions(struct rq *rq)
 {
-	u64 ws = rq->window_start;
+	u64 ws = rq->wrq.window_start;
 	u64 prev_ws = ws - sched_ravg_window;
-	struct load_subtractions *ls = rq->load_subs;
+	struct load_subtractions *ls = rq->wrq.load_subs;
 	int i;
 
 	for (i = 0; i < NUM_TRACKED_WINDOWS; i++) {
 		if (ls[i].window_start == ws) {
-			rq->curr_runnable_sum -= ls[i].subs;
-			rq->nt_curr_runnable_sum -= ls[i].new_subs;
+			rq->wrq.curr_runnable_sum -= ls[i].subs;
+			rq->wrq.nt_curr_runnable_sum -= ls[i].new_subs;
 		} else if (ls[i].window_start == prev_ws) {
-			rq->prev_runnable_sum -= ls[i].subs;
-			rq->nt_prev_runnable_sum -= ls[i].new_subs;
+			rq->wrq.prev_runnable_sum -= ls[i].subs;
+			rq->wrq.nt_prev_runnable_sum -= ls[i].new_subs;
 		}
 
 		ls[i].subs = 0;
 		ls[i].new_subs = 0;
 	}
 
-	BUG_ON((s64)rq->prev_runnable_sum < 0);
-	BUG_ON((s64)rq->curr_runnable_sum < 0);
-	BUG_ON((s64)rq->nt_prev_runnable_sum < 0);
-	BUG_ON((s64)rq->nt_curr_runnable_sum < 0);
+	BUG_ON((s64)rq->wrq.prev_runnable_sum < 0);
+	BUG_ON((s64)rq->wrq.curr_runnable_sum < 0);
+	BUG_ON((s64)rq->wrq.nt_prev_runnable_sum < 0);
+	BUG_ON((s64)rq->wrq.nt_curr_runnable_sum < 0);
 }
 
 static inline void create_subtraction_entry(struct rq *rq, u64 ws, int index)
 {
-	rq->load_subs[index].window_start = ws;
-	rq->load_subs[index].subs = 0;
-	rq->load_subs[index].new_subs = 0;
+	rq->wrq.load_subs[index].window_start = ws;
+	rq->wrq.load_subs[index].subs = 0;
+	rq->wrq.load_subs[index].new_subs = 0;
 }
 
 static int get_top_index(unsigned long *bitmap, unsigned long old_top)
@@ -649,7 +649,7 @@ static bool get_subtraction_index(struct rq *rq, u64 ws)
 	int oldest_index = 0;
 
 	for (i = 0; i < NUM_TRACKED_WINDOWS; i++) {
-		u64 entry_ws = rq->load_subs[i].window_start;
+		u64 entry_ws = rq->wrq.load_subs[i].window_start;
 
 		if (ws == entry_ws)
 			return i;
@@ -667,9 +667,9 @@ static bool get_subtraction_index(struct rq *rq, u64 ws)
 static void update_rq_load_subtractions(int index, struct rq *rq,
 					u32 sub_load, bool new_task)
 {
-	rq->load_subs[index].subs +=  sub_load;
+	rq->wrq.load_subs[index].subs +=  sub_load;
 	if (new_task)
-		rq->load_subs[index].new_subs += sub_load;
+		rq->wrq.load_subs[index].new_subs += sub_load;
 }
 
 void update_cluster_load_subtractions(struct task_struct *p,
@@ -717,19 +717,19 @@ static inline void inter_cluster_migration_fixup
 	p->ravg.curr_window_cpu[new_cpu] = p->ravg.curr_window;
 	p->ravg.prev_window_cpu[new_cpu] = p->ravg.prev_window;
 
-	dest_rq->curr_runnable_sum += p->ravg.curr_window;
-	dest_rq->prev_runnable_sum += p->ravg.prev_window;
+	dest_rq->wrq.curr_runnable_sum += p->ravg.curr_window;
+	dest_rq->wrq.prev_runnable_sum += p->ravg.prev_window;
 
-	src_rq->curr_runnable_sum -=  p->ravg.curr_window_cpu[task_cpu];
-	src_rq->prev_runnable_sum -=  p->ravg.prev_window_cpu[task_cpu];
+	src_rq->wrq.curr_runnable_sum -=  p->ravg.curr_window_cpu[task_cpu];
+	src_rq->wrq.prev_runnable_sum -=  p->ravg.prev_window_cpu[task_cpu];
 
 	if (new_task) {
-		dest_rq->nt_curr_runnable_sum += p->ravg.curr_window;
-		dest_rq->nt_prev_runnable_sum += p->ravg.prev_window;
+		dest_rq->wrq.nt_curr_runnable_sum += p->ravg.curr_window;
+		dest_rq->wrq.nt_prev_runnable_sum += p->ravg.prev_window;
 
-		src_rq->nt_curr_runnable_sum -=
+		src_rq->wrq.nt_curr_runnable_sum -=
 				p->ravg.curr_window_cpu[task_cpu];
-		src_rq->nt_prev_runnable_sum -=
+		src_rq->wrq.nt_prev_runnable_sum -=
 				p->ravg.prev_window_cpu[task_cpu];
 	}
 
@@ -737,12 +737,12 @@ static inline void inter_cluster_migration_fixup
 	p->ravg.prev_window_cpu[task_cpu] = 0;
 
 	update_cluster_load_subtractions(p, task_cpu,
-			src_rq->window_start, new_task);
+			src_rq->wrq.window_start, new_task);
 
-	BUG_ON((s64)src_rq->prev_runnable_sum < 0);
-	BUG_ON((s64)src_rq->curr_runnable_sum < 0);
-	BUG_ON((s64)src_rq->nt_prev_runnable_sum < 0);
-	BUG_ON((s64)src_rq->nt_curr_runnable_sum < 0);
+	BUG_ON((s64)src_rq->wrq.prev_runnable_sum < 0);
+	BUG_ON((s64)src_rq->wrq.curr_runnable_sum < 0);
+	BUG_ON((s64)src_rq->wrq.nt_prev_runnable_sum < 0);
+	BUG_ON((s64)src_rq->wrq.nt_curr_runnable_sum < 0);
 }
 
 static u32 load_to_index(u32 load)
@@ -759,59 +759,59 @@ migrate_top_tasks(struct task_struct *p, struct rq *src_rq, struct rq *dst_rq)
 	int top_index;
 	u32 curr_window = p->ravg.curr_window;
 	u32 prev_window = p->ravg.prev_window;
-	u8 src = src_rq->curr_table;
-	u8 dst = dst_rq->curr_table;
+	u8 src = src_rq->wrq.curr_table;
+	u8 dst = dst_rq->wrq.curr_table;
 	u8 *src_table;
 	u8 *dst_table;
 
 	if (curr_window) {
-		src_table = src_rq->top_tasks[src];
-		dst_table = dst_rq->top_tasks[dst];
+		src_table = src_rq->wrq.top_tasks[src];
+		dst_table = dst_rq->wrq.top_tasks[dst];
 		index = load_to_index(curr_window);
 		src_table[index] -= 1;
 		dst_table[index] += 1;
 
 		if (!src_table[index])
 			__clear_bit(NUM_LOAD_INDICES - index - 1,
-				src_rq->top_tasks_bitmap[src]);
+				src_rq->wrq.top_tasks_bitmap[src]);
 
 		if (dst_table[index] == 1)
 			__set_bit(NUM_LOAD_INDICES - index - 1,
-				dst_rq->top_tasks_bitmap[dst]);
+				dst_rq->wrq.top_tasks_bitmap[dst]);
 
-		if (index > dst_rq->curr_top)
-			dst_rq->curr_top = index;
+		if (index > dst_rq->wrq.curr_top)
+			dst_rq->wrq.curr_top = index;
 
-		top_index = src_rq->curr_top;
+		top_index = src_rq->wrq.curr_top;
 		if (index == top_index && !src_table[index])
-			src_rq->curr_top = get_top_index(
-				src_rq->top_tasks_bitmap[src], top_index);
+			src_rq->wrq.curr_top = get_top_index(
+				src_rq->wrq.top_tasks_bitmap[src], top_index);
 	}
 
 	if (prev_window) {
 		src = 1 - src;
 		dst = 1 - dst;
-		src_table = src_rq->top_tasks[src];
-		dst_table = dst_rq->top_tasks[dst];
+		src_table = src_rq->wrq.top_tasks[src];
+		dst_table = dst_rq->wrq.top_tasks[dst];
 		index = load_to_index(prev_window);
 		src_table[index] -= 1;
 		dst_table[index] += 1;
 
 		if (!src_table[index])
 			__clear_bit(NUM_LOAD_INDICES - index - 1,
-				src_rq->top_tasks_bitmap[src]);
+				src_rq->wrq.top_tasks_bitmap[src]);
 
 		if (dst_table[index] == 1)
 			__set_bit(NUM_LOAD_INDICES - index - 1,
-				dst_rq->top_tasks_bitmap[dst]);
+				dst_rq->wrq.top_tasks_bitmap[dst]);
 
-		if (index > dst_rq->prev_top)
-			dst_rq->prev_top = index;
+		if (index > dst_rq->wrq.prev_top)
+			dst_rq->wrq.prev_top = index;
 
-		top_index = src_rq->prev_top;
+		top_index = src_rq->wrq.prev_top;
 		if (index == top_index && !src_table[index])
-			src_rq->prev_top = get_top_index(
-				src_rq->top_tasks_bitmap[src], top_index);
+			src_rq->wrq.prev_top = get_top_index(
+				src_rq->wrq.top_tasks_bitmap[src], top_index);
 	}
 }
 
@@ -860,7 +860,7 @@ void fixup_busy_time(struct task_struct *p, int new_cpu)
 	 * demand.
 	 */
 	if (p->state == TASK_WAKING && p->last_sleep_ts >=
-				       src_rq->window_start) {
+				       src_rq->wrq.window_start) {
 		walt_fixup_cum_window_demand(src_rq, -(s64)p->ravg.demand);
 		walt_fixup_cum_window_demand(dest_rq, p->ravg.demand);
 	}
@@ -877,13 +877,13 @@ void fixup_busy_time(struct task_struct *p, int new_cpu)
 	if (grp) {
 		struct group_cpu_time *cpu_time;
 
-		cpu_time = &src_rq->grp_time;
+		cpu_time = &src_rq->wrq.grp_time;
 		src_curr_runnable_sum = &cpu_time->curr_runnable_sum;
 		src_prev_runnable_sum = &cpu_time->prev_runnable_sum;
 		src_nt_curr_runnable_sum = &cpu_time->nt_curr_runnable_sum;
 		src_nt_prev_runnable_sum = &cpu_time->nt_prev_runnable_sum;
 
-		cpu_time = &dest_rq->grp_time;
+		cpu_time = &dest_rq->wrq.grp_time;
 		dst_curr_runnable_sum = &cpu_time->curr_runnable_sum;
 		dst_prev_runnable_sum = &cpu_time->prev_runnable_sum;
 		dst_nt_curr_runnable_sum = &cpu_time->nt_curr_runnable_sum;
@@ -918,14 +918,14 @@ void fixup_busy_time(struct task_struct *p, int new_cpu)
 	migrate_top_tasks(p, src_rq, dest_rq);
 
 	if (!same_freq_domain(new_cpu, task_cpu(p))) {
-		src_rq->notif_pending = true;
-		dest_rq->notif_pending = true;
+		src_rq->wrq.notif_pending = true;
+		dest_rq->wrq.notif_pending = true;
 		sched_irq_work_queue(&walt_migration_irq_work);
 	}
 
-	if (p == src_rq->ed_task) {
-		src_rq->ed_task = NULL;
-		dest_rq->ed_task = p;
+	if (p == src_rq->wrq.ed_task) {
+		src_rq->wrq.ed_task = NULL;
+		dest_rq->wrq.ed_task = p;
 	}
 
 done:
@@ -937,13 +937,13 @@ void set_window_start(struct rq *rq)
 {
 	static int sync_cpu_available;
 
-	if (likely(rq->window_start))
+	if (likely(rq->wrq.window_start))
 		return;
 
 	if (!sync_cpu_available) {
-		rq->window_start = 1;
+		rq->wrq.window_start = 1;
 		sync_cpu_available = 1;
-		atomic64_set(&walt_irq_work_lastq_ws, rq->window_start);
+		atomic64_set(&walt_irq_work_lastq_ws, rq->wrq.window_start);
 		walt_load_reported_window =
 					atomic64_read(&walt_irq_work_lastq_ws);
 
@@ -952,13 +952,13 @@ void set_window_start(struct rq *rq)
 
 		raw_spin_unlock(&rq->lock);
 		double_rq_lock(rq, sync_rq);
-		rq->window_start = sync_rq->window_start;
-		rq->curr_runnable_sum = rq->prev_runnable_sum = 0;
-		rq->nt_curr_runnable_sum = rq->nt_prev_runnable_sum = 0;
+		rq->wrq.window_start = sync_rq->wrq.window_start;
+		rq->wrq.curr_runnable_sum = rq->wrq.prev_runnable_sum = 0;
+		rq->wrq.nt_curr_runnable_sum = rq->wrq.nt_prev_runnable_sum = 0;
 		raw_spin_unlock(&sync_rq->lock);
 	}
 
-	rq->curr->ravg.mark_start = rq->window_start;
+	rq->curr->ravg.mark_start = rq->wrq.window_start;
 }
 
 unsigned int max_possible_efficiency = 1;
@@ -1164,10 +1164,10 @@ void clear_top_tasks_bitmap(unsigned long *bitmap)
 static void update_top_tasks(struct task_struct *p, struct rq *rq,
 		u32 old_curr_window, int new_window, bool full_window)
 {
-	u8 curr = rq->curr_table;
+	u8 curr = rq->wrq.curr_table;
 	u8 prev = 1 - curr;
-	u8 *curr_table = rq->top_tasks[curr];
-	u8 *prev_table = rq->top_tasks[prev];
+	u8 *curr_table = rq->wrq.top_tasks[curr];
+	u8 *prev_table = rq->wrq.top_tasks[prev];
 	int old_index, new_index, update_index;
 	u32 curr_window = p->ravg.curr_window;
 	u32 prev_window = p->ravg.prev_window;
@@ -1186,17 +1186,17 @@ static void update_top_tasks(struct task_struct *p, struct rq *rq,
 				curr_table[old_index] -= 1;
 			if (curr_window)
 				curr_table[new_index] += 1;
-			if (new_index > rq->curr_top)
-				rq->curr_top = new_index;
+			if (new_index > rq->wrq.curr_top)
+				rq->wrq.curr_top = new_index;
 		}
 
 		if (!curr_table[old_index])
 			__clear_bit(NUM_LOAD_INDICES - old_index - 1,
-				rq->top_tasks_bitmap[curr]);
+				rq->wrq.top_tasks_bitmap[curr]);
 
 		if (curr_table[new_index] == 1)
 			__set_bit(NUM_LOAD_INDICES - new_index - 1,
-				rq->top_tasks_bitmap[curr]);
+				rq->wrq.top_tasks_bitmap[curr]);
 
 		return;
 	}
@@ -1219,12 +1219,12 @@ static void update_top_tasks(struct task_struct *p, struct rq *rq,
 		 */
 		if (prev_window) {
 			prev_table[update_index] += 1;
-			rq->prev_top = update_index;
+			rq->wrq.prev_top = update_index;
 		}
 
 		if (prev_table[update_index] == 1)
 			__set_bit(NUM_LOAD_INDICES - update_index - 1,
-				rq->top_tasks_bitmap[prev]);
+				rq->wrq.top_tasks_bitmap[prev]);
 	} else {
 		zero_index_update = !old_curr_window && prev_window;
 		if (old_index != update_index || zero_index_update) {
@@ -1233,50 +1233,50 @@ static void update_top_tasks(struct task_struct *p, struct rq *rq,
 
 			prev_table[update_index] += 1;
 
-			if (update_index > rq->prev_top)
-				rq->prev_top = update_index;
+			if (update_index > rq->wrq.prev_top)
+				rq->wrq.prev_top = update_index;
 
 			if (!prev_table[old_index])
 				__clear_bit(NUM_LOAD_INDICES - old_index - 1,
-						rq->top_tasks_bitmap[prev]);
+						rq->wrq.top_tasks_bitmap[prev]);
 
 			if (prev_table[update_index] == 1)
 				__set_bit(NUM_LOAD_INDICES - update_index - 1,
-						rq->top_tasks_bitmap[prev]);
+						rq->wrq.top_tasks_bitmap[prev]);
 		}
 	}
 
 	if (curr_window) {
 		curr_table[new_index] += 1;
 
-		if (new_index > rq->curr_top)
-			rq->curr_top = new_index;
+		if (new_index > rq->wrq.curr_top)
+			rq->wrq.curr_top = new_index;
 
 		if (curr_table[new_index] == 1)
 			__set_bit(NUM_LOAD_INDICES - new_index - 1,
-				rq->top_tasks_bitmap[curr]);
+				rq->wrq.top_tasks_bitmap[curr]);
 	}
 }
 
 static void rollover_top_tasks(struct rq *rq, bool full_window)
 {
-	u8 curr_table = rq->curr_table;
+	u8 curr_table = rq->wrq.curr_table;
 	u8 prev_table = 1 - curr_table;
-	int curr_top = rq->curr_top;
+	int curr_top = rq->wrq.curr_top;
 
-	clear_top_tasks_table(rq->top_tasks[prev_table]);
-	clear_top_tasks_bitmap(rq->top_tasks_bitmap[prev_table]);
+	clear_top_tasks_table(rq->wrq.top_tasks[prev_table]);
+	clear_top_tasks_bitmap(rq->wrq.top_tasks_bitmap[prev_table]);
 
 	if (full_window) {
 		curr_top = 0;
-		clear_top_tasks_table(rq->top_tasks[curr_table]);
+		clear_top_tasks_table(rq->wrq.top_tasks[curr_table]);
 		clear_top_tasks_bitmap(
-				rq->top_tasks_bitmap[curr_table]);
+				rq->wrq.top_tasks_bitmap[curr_table]);
 	}
 
-	rq->curr_table = prev_table;
-	rq->prev_top = curr_top;
-	rq->curr_top = 0;
+	rq->wrq.curr_table = prev_table;
+	rq->wrq.prev_top = curr_top;
+	rq->wrq.curr_top = 0;
 }
 
 static u32 empty_windows[NR_CPUS];
@@ -1357,9 +1357,9 @@ static inline u64 scale_exec_time(u64 delta, struct rq *rq)
 {
 	u32 freq;
 
-	freq = cpu_cycles_to_freq(rq->cc.cycles, rq->cc.time);
+	freq = cpu_cycles_to_freq(rq->wrq.cc.cycles, rq->wrq.cc.time);
 	delta = DIV64_U64_ROUNDUP(delta * freq, max_possible_freq);
-	delta *= rq->cluster->exec_scale_factor;
+	delta *= rq->wrq.cluster->exec_scale_factor;
 	delta >>= 10;
 
 	return delta;
@@ -1376,15 +1376,15 @@ static inline unsigned int load_to_freq(struct rq *rq, unsigned int load)
 
 bool do_pl_notif(struct rq *rq)
 {
-	u64 prev = rq->old_busy_time;
-	u64 pl = rq->walt_stats.pred_demands_sum;
+	u64 prev = rq->wrq.old_busy_time;
+	u64 pl = rq->wrq.walt_stats.pred_demands_sum;
 	int cpu = cpu_of(rq);
 
 	/* If already at max freq, bail out */
 	if (capacity_orig_of(cpu) == capacity_curr_of(cpu))
 		return false;
 
-	prev = max(prev, rq->old_estimated_time);
+	prev = max(prev, rq->wrq.old_estimated_time);
 
 	pl = div64_u64(pl, sched_ravg_window >> SCHED_CAPACITY_SHIFT);
 
@@ -1394,10 +1394,10 @@ bool do_pl_notif(struct rq *rq)
 
 static void rollover_cpu_window(struct rq *rq, bool full_window)
 {
-	u64 curr_sum = rq->curr_runnable_sum;
-	u64 nt_curr_sum = rq->nt_curr_runnable_sum;
-	u64 grp_curr_sum = rq->grp_time.curr_runnable_sum;
-	u64 grp_nt_curr_sum = rq->grp_time.nt_curr_runnable_sum;
+	u64 curr_sum = rq->wrq.curr_runnable_sum;
+	u64 nt_curr_sum = rq->wrq.nt_curr_runnable_sum;
+	u64 grp_curr_sum = rq->wrq.grp_time.curr_runnable_sum;
+	u64 grp_nt_curr_sum = rq->wrq.grp_time.nt_curr_runnable_sum;
 
 	if (unlikely(full_window)) {
 		curr_sum = 0;
@@ -1406,15 +1406,15 @@ static void rollover_cpu_window(struct rq *rq, bool full_window)
 		grp_nt_curr_sum = 0;
 	}
 
-	rq->prev_runnable_sum = curr_sum;
-	rq->nt_prev_runnable_sum = nt_curr_sum;
-	rq->grp_time.prev_runnable_sum = grp_curr_sum;
-	rq->grp_time.nt_prev_runnable_sum = grp_nt_curr_sum;
+	rq->wrq.prev_runnable_sum = curr_sum;
+	rq->wrq.nt_prev_runnable_sum = nt_curr_sum;
+	rq->wrq.grp_time.prev_runnable_sum = grp_curr_sum;
+	rq->wrq.grp_time.nt_prev_runnable_sum = grp_nt_curr_sum;
 
-	rq->curr_runnable_sum = 0;
-	rq->nt_curr_runnable_sum = 0;
-	rq->grp_time.curr_runnable_sum = 0;
-	rq->grp_time.nt_curr_runnable_sum = 0;
+	rq->wrq.curr_runnable_sum = 0;
+	rq->wrq.nt_curr_runnable_sum = 0;
+	rq->wrq.grp_time.curr_runnable_sum = 0;
+	rq->wrq.grp_time.nt_curr_runnable_sum = 0;
 }
 
 /*
@@ -1426,13 +1426,13 @@ static void update_cpu_busy_time(struct task_struct *p, struct rq *rq,
 	int new_window, full_window = 0;
 	int p_is_curr_task = (p == rq->curr);
 	u64 mark_start = p->ravg.mark_start;
-	u64 window_start = rq->window_start;
+	u64 window_start = rq->wrq.window_start;
 	u32 window_size = sched_ravg_window;
 	u64 delta;
-	u64 *curr_runnable_sum = &rq->curr_runnable_sum;
-	u64 *prev_runnable_sum = &rq->prev_runnable_sum;
-	u64 *nt_curr_runnable_sum = &rq->nt_curr_runnable_sum;
-	u64 *nt_prev_runnable_sum = &rq->nt_prev_runnable_sum;
+	u64 *curr_runnable_sum = &rq->wrq.curr_runnable_sum;
+	u64 *prev_runnable_sum = &rq->wrq.prev_runnable_sum;
+	u64 *nt_curr_runnable_sum = &rq->wrq.nt_curr_runnable_sum;
+	u64 *nt_prev_runnable_sum = &rq->wrq.nt_prev_runnable_sum;
 	bool new_task;
 	struct related_thread_group *grp;
 	int cpu = rq->cpu;
@@ -1466,7 +1466,7 @@ static void update_cpu_busy_time(struct task_struct *p, struct rq *rq,
 
 	grp = p->grp;
 	if (grp) {
-		struct group_cpu_time *cpu_time = &rq->grp_time;
+		struct group_cpu_time *cpu_time = &rq->wrq.grp_time;
 
 		curr_runnable_sum = &cpu_time->curr_runnable_sum;
 		prev_runnable_sum = &cpu_time->prev_runnable_sum;
@@ -1653,7 +1653,7 @@ static void update_cpu_busy_time(struct task_struct *p, struct rq *rq,
 
 		/* Process the remaining IRQ busy time in the current window. */
 		delta = wallclock - window_start;
-		rq->curr_runnable_sum = scale_exec_time(delta, rq);
+		rq->wrq.curr_runnable_sum = scale_exec_time(delta, rq);
 
 		return;
 	}
@@ -1816,7 +1816,7 @@ static u64 add_to_task_demand(struct rq *rq, struct task_struct *p, u64 delta)
  *
  * ms = p->ravg.mark_start;
  * wc = wallclock
- * ws = rq->window_start
+ * ws = rq->wrq.window_start
  *
  * Three possibilities:
  *
@@ -1865,7 +1865,7 @@ static u64 update_task_demand(struct task_struct *p, struct rq *rq,
 			       int event, u64 wallclock)
 {
 	u64 mark_start = p->ravg.mark_start;
-	u64 delta, window_start = rq->window_start;
+	u64 delta, window_start = rq->wrq.window_start;
 	int new_window, nr_full_windows;
 	u32 window_size = sched_ravg_window;
 	u64 runtime;
@@ -1936,8 +1936,8 @@ update_task_rq_cpu_cycles(struct task_struct *p, struct rq *rq, int event,
 	lockdep_assert_held(&rq->lock);
 
 	if (!use_cycle_counter) {
-		rq->cc.cycles = cpu_cur_freq(cpu);
-		rq->cc.time = 1;
+		rq->wrq.cc.cycles = cpu_cur_freq(cpu);
+		rq->wrq.cc.time = 1;
 		return;
 	}
 
@@ -1952,10 +1952,10 @@ update_task_rq_cpu_cycles(struct task_struct *p, struct rq *rq, int event,
 	 */
 	if (!is_idle_task(rq->curr) || irqtime) {
 		if (unlikely(cur_cycles < p->cpu_cycles))
-			rq->cc.cycles = cur_cycles + (U64_MAX - p->cpu_cycles);
+			rq->wrq.cc.cycles = cur_cycles + (U64_MAX - p->cpu_cycles);
 		else
-			rq->cc.cycles = cur_cycles - p->cpu_cycles;
-		rq->cc.cycles = rq->cc.cycles * NSEC_PER_MSEC;
+			rq->wrq.cc.cycles = cur_cycles - p->cpu_cycles;
+		rq->wrq.cc.cycles = rq->wrq.cc.cycles * NSEC_PER_MSEC;
 
 		if (event == IRQ_UPDATE && is_idle_task(p))
 			/*
@@ -1963,30 +1963,30 @@ update_task_rq_cpu_cycles(struct task_struct *p, struct rq *rq, int event,
 			 * entry time is CPU cycle counter stall period.
 			 * Upon IRQ handler entry sched_account_irqstart()
 			 * replenishes idle task's cpu cycle counter so
-			 * rq->cc.cycles now represents increased cycles during
+			 * rq->wrq.cc.cycles now represents increased cycles during
 			 * IRQ handler rather than time between idle entry and
 			 * IRQ exit.  Thus use irqtime as time delta.
 			 */
-			rq->cc.time = irqtime;
+			rq->wrq.cc.time = irqtime;
 		else
-			rq->cc.time = wallclock - p->ravg.mark_start;
-		BUG_ON((s64)rq->cc.time < 0);
+			rq->wrq.cc.time = wallclock - p->ravg.mark_start;
+		BUG_ON((s64)rq->wrq.cc.time < 0);
 	}
 
 	p->cpu_cycles = cur_cycles;
 
-	trace_sched_get_task_cpu_cycles(cpu, event, rq->cc.cycles, rq->cc.time, p);
+	trace_sched_get_task_cpu_cycles(cpu, event, rq->wrq.cc.cycles, rq->wrq.cc.time, p);
 }
 
 static inline void run_walt_irq_work(u64 old_window_start, struct rq *rq)
 {
 	u64 result;
 
-	if (old_window_start == rq->window_start)
+	if (old_window_start == rq->wrq.window_start)
 		return;
 
 	result = atomic64_cmpxchg(&walt_irq_work_lastq_ws, old_window_start,
-				   rq->window_start);
+				   rq->wrq.window_start);
 	if (result == old_window_start)
 		sched_irq_work_queue(&walt_cpufreq_irq_work);
 }
@@ -1997,7 +1997,7 @@ void update_task_ravg(struct task_struct *p, struct rq *rq, int event,
 {
 	u64 old_window_start;
 
-	if (!rq->window_start || sched_disable_window_stats ||
+	if (!rq->wrq.window_start || sched_disable_window_stats ||
 	    p->ravg.mark_start == wallclock)
 		return;
 
@@ -2019,9 +2019,9 @@ void update_task_ravg(struct task_struct *p, struct rq *rq, int event,
 		goto done;
 
 	trace_sched_update_task_ravg(p, rq, event, wallclock, irqtime,
-				rq->cc.cycles, rq->cc.time, &rq->grp_time);
+				rq->wrq.cc.cycles, rq->wrq.cc.time, &rq->wrq.grp_time);
 	trace_sched_update_task_ravg_mini(p, rq, event, wallclock, irqtime,
-				rq->cc.cycles, rq->cc.time, &rq->grp_time);
+				rq->wrq.cc.cycles, rq->wrq.cc.time, &rq->wrq.grp_time);
 
 done:
 	p->ravg.mark_start = wallclock;
@@ -2126,7 +2126,7 @@ void mark_task_starting(struct task_struct *p)
 	u64 wallclock;
 	struct rq *rq = task_rq(p);
 
-	if (!rq->window_start || sched_disable_window_stats) {
+	if (!rq->wrq.window_start || sched_disable_window_stats) {
 		reset_task_stats(p);
 		return;
 	}
@@ -2209,7 +2209,7 @@ static void add_cluster(const struct cpumask *cpus, struct list_head *head)
 		return;
 
 	for_each_cpu(i, cpus)
-		cpu_rq(i)->cluster = cluster;
+		cpu_rq(i)->wrq.cluster = cluster;
 
 	insert_cluster(cluster, head);
 	set_bit(num_clusters, all_cluster_ids);
@@ -2421,7 +2421,7 @@ static int cpufreq_notifier_policy(struct notifier_block *nb,
 		cpu_max_table_freq[i] = policy->cpuinfo.max_freq;
 
 	for_each_cpu(i, &policy_cluster) {
-		cluster = cpu_rq(i)->cluster;
+		cluster = cpu_rq(i)->wrq.cluster;
 		cpumask_andnot(&policy_cluster, &policy_cluster,
 						&cluster->cpus);
 
@@ -2433,7 +2433,7 @@ static int cpufreq_notifier_policy(struct notifier_block *nb,
 		if (!cluster->freq_init_done) {
 			mutex_lock(&cluster_lock);
 			for_each_cpu(j, &cluster->cpus)
-				cpumask_copy(&cpu_rq(j)->freq_domain_cpumask,
+				cpumask_copy(&cpu_rq(j)->wrq.freq_domain_cpumask,
 						policy->related_cpus);
 			cluster->max_possible_freq = policy->cpuinfo.max_freq;
 			cluster->max_possible_capacity =
@@ -2466,7 +2466,7 @@ static int cpufreq_notifier_trans(struct notifier_block *nb,
 	unsigned int cpu = freq->cpu, new_freq = freq->new;
 	unsigned long flags;
 	struct sched_cluster *cluster;
-	struct cpumask policy_cpus = cpu_rq(cpu)->freq_domain_cpumask;
+	struct cpumask policy_cpus = cpu_rq(cpu)->wrq.freq_domain_cpumask;
 	int i, j;
 
 	if (val != CPUFREQ_POSTCHANGE)
@@ -2476,7 +2476,7 @@ static int cpufreq_notifier_trans(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	for_each_cpu(i, &policy_cpus) {
-		cluster = cpu_rq(i)->cluster;
+		cluster = cpu_rq(i)->wrq.cluster;
 
 		if (!use_cycle_counter) {
 			for_each_cpu(j, &cluster->cpus) {
@@ -2956,7 +2956,7 @@ void update_cpu_cluster_capacity(const cpumask_t *cpus)
 	acquire_rq_locks_irqsave(cpu_possible_mask, &flags);
 
 	for_each_cpu(i, &cpumask) {
-		cluster = cpu_rq(i)->cluster;
+		cluster = cpu_rq(i)->wrq.cluster;
 		cpumask_andnot(&cpumask, &cpumask, &cluster->cpus);
 
 		cluster->capacity = compute_capacity(cluster);
@@ -3026,7 +3026,7 @@ void sched_update_cpu_freq_min_max(const cpumask_t *cpus, u32 fmin, u32 fmax)
 		thermal_cap_cpu[i] = do_thermal_cap(i, fmax);
 
 	for_each_cpu(i, &cpumask) {
-		cluster = cpu_rq(i)->cluster;
+		cluster = cpu_rq(i)->wrq.cluster;
 		cpumask_andnot(&cpumask, &cpumask, &cluster->cpus);
 		update_capacity += (cluster->max_mitigated_freq != fmax);
 		cluster->max_mitigated_freq = fmax;
@@ -3070,18 +3070,18 @@ static void transfer_busy_time(struct rq *rq, struct related_thread_group *grp,
 	update_task_ravg(p, rq, TASK_UPDATE, wallclock, 0);
 	new_task = is_new_task(p);
 
-	cpu_time = &rq->grp_time;
+	cpu_time = &rq->wrq.grp_time;
 	if (event == ADD_TASK) {
 		migrate_type = RQ_TO_GROUP;
 
-		src_curr_runnable_sum = &rq->curr_runnable_sum;
+		src_curr_runnable_sum = &rq->wrq.curr_runnable_sum;
 		dst_curr_runnable_sum = &cpu_time->curr_runnable_sum;
-		src_prev_runnable_sum = &rq->prev_runnable_sum;
+		src_prev_runnable_sum = &rq->wrq.prev_runnable_sum;
 		dst_prev_runnable_sum = &cpu_time->prev_runnable_sum;
 
-		src_nt_curr_runnable_sum = &rq->nt_curr_runnable_sum;
+		src_nt_curr_runnable_sum = &rq->wrq.nt_curr_runnable_sum;
 		dst_nt_curr_runnable_sum = &cpu_time->nt_curr_runnable_sum;
-		src_nt_prev_runnable_sum = &rq->nt_prev_runnable_sum;
+		src_nt_prev_runnable_sum = &rq->wrq.nt_prev_runnable_sum;
 		dst_nt_prev_runnable_sum = &cpu_time->nt_prev_runnable_sum;
 
 		*src_curr_runnable_sum -= p->ravg.curr_window_cpu[cpu];
@@ -3094,20 +3094,20 @@ static void transfer_busy_time(struct rq *rq, struct related_thread_group *grp,
 		}
 
 		update_cluster_load_subtractions(p, cpu,
-				rq->window_start, new_task);
+				rq->wrq.window_start, new_task);
 
 	} else {
 		migrate_type = GROUP_TO_RQ;
 
 		src_curr_runnable_sum = &cpu_time->curr_runnable_sum;
-		dst_curr_runnable_sum = &rq->curr_runnable_sum;
+		dst_curr_runnable_sum = &rq->wrq.curr_runnable_sum;
 		src_prev_runnable_sum = &cpu_time->prev_runnable_sum;
-		dst_prev_runnable_sum = &rq->prev_runnable_sum;
+		dst_prev_runnable_sum = &rq->wrq.prev_runnable_sum;
 
 		src_nt_curr_runnable_sum = &cpu_time->nt_curr_runnable_sum;
-		dst_nt_curr_runnable_sum = &rq->nt_curr_runnable_sum;
+		dst_nt_curr_runnable_sum = &rq->wrq.nt_curr_runnable_sum;
 		src_nt_prev_runnable_sum = &cpu_time->nt_prev_runnable_sum;
-		dst_nt_prev_runnable_sum = &rq->nt_prev_runnable_sum;
+		dst_nt_prev_runnable_sum = &rq->wrq.nt_prev_runnable_sum;
 
 		*src_curr_runnable_sum -= p->ravg.curr_window;
 		*src_prev_runnable_sum -= p->ravg.prev_window;
@@ -3256,7 +3256,7 @@ void walt_irq_work(struct irq_work *irq_work)
 				update_task_ravg(rq->curr, rq,
 						TASK_UPDATE, wc, 0);
 				account_load_subtractions(rq);
-				aggr_grp_load += rq->grp_time.prev_runnable_sum;
+				aggr_grp_load += rq->wrq.grp_time.prev_runnable_sum;
 			}
 		}
 
@@ -3277,9 +3277,9 @@ void walt_irq_work(struct irq_work *irq_work)
 			rq = cpu_rq(cpu);
 
 			if (is_migration) {
-				if (rq->notif_pending) {
+				if (rq->wrq.notif_pending) {
 					nflag |= SCHED_CPUFREQ_INTERCLUSTER_MIG;
-					rq->notif_pending = false;
+					rq->wrq.notif_pending = false;
 				} else {
 					nflag |= SCHED_CPUFREQ_FORCE_UPDATE;
 				}
@@ -3293,7 +3293,7 @@ void walt_irq_work(struct irq_work *irq_work)
 		raw_spin_unlock(&cpu_rq(cpu)->lock);
 
 	if (!is_migration)
-		core_ctl_check(this_rq()->window_start);
+		core_ctl_check(this_rq()->wrq.window_start);
 }
 
 void walt_rotation_checkpoint(int nr_big)
@@ -3341,56 +3341,56 @@ void walt_sched_init(struct rq *rq)
 {
 	int j;
 
-	cpumask_set_cpu(cpu_of(rq), &rq->freq_domain_cpumask);
+	cpumask_set_cpu(cpu_of(rq), &rq->wrq.freq_domain_cpumask);
 	init_irq_work(&walt_migration_irq_work, walt_irq_work);
 	init_irq_work(&walt_cpufreq_irq_work, walt_irq_work);
 	walt_rotate_work_init();
 
-	rq->walt_stats.cumulative_runnable_avg = 0;
-	rq->window_start = 0;
-	rq->cum_window_start = 0;
-	rq->walt_stats.nr_big_tasks = 0;
-	rq->walt_flags = 0;
-	rq->cur_irqload = 0;
-	rq->avg_irqload = 0;
-	rq->irqload_ts = 0;
-	rq->static_cpu_pwr_cost = 0;
-	rq->cc.cycles = 1;
-	rq->cc.time = 1;
-	rq->cstate = 0;
-	rq->wakeup_latency = 0;
-	rq->wakeup_energy = 0;
+	rq->wrq.walt_stats.cumulative_runnable_avg = 0;
+	rq->wrq.window_start = 0;
+	rq->wrq.cum_window_start = 0;
+	rq->wrq.walt_stats.nr_big_tasks = 0;
+	rq->wrq.walt_flags = 0;
+	rq->wrq.cur_irqload = 0;
+	rq->wrq.avg_irqload = 0;
+	rq->wrq.irqload_ts = 0;
+	rq->wrq.static_cpu_pwr_cost = 0;
+	rq->wrq.cc.cycles = 1;
+	rq->wrq.cc.time = 1;
+	rq->wrq.cstate = 0;
+	rq->wrq.wakeup_latency = 0;
+	rq->wrq.wakeup_energy = 0;
 
 	/*
 	 * All cpus part of same cluster by default. This avoids the
-	 * need to check for rq->cluster being non-NULL in hot-paths
+	 * need to check for rq->wrq.cluster being non-NULL in hot-paths
 	 * like select_best_cpu()
 	 */
-	rq->cluster = &init_cluster;
-	rq->curr_runnable_sum = rq->prev_runnable_sum = 0;
-	rq->nt_curr_runnable_sum = rq->nt_prev_runnable_sum = 0;
-	memset(&rq->grp_time, 0, sizeof(struct group_cpu_time));
-	rq->old_busy_time = 0;
-	rq->old_estimated_time = 0;
-	rq->old_busy_time_group = 0;
-	rq->walt_stats.pred_demands_sum = 0;
-	rq->ed_task = NULL;
-	rq->curr_table = 0;
-	rq->prev_top = 0;
-	rq->curr_top = 0;
-	rq->last_cc_update = 0;
-	rq->cycles = 0;
+	rq->wrq.cluster = &init_cluster;
+	rq->wrq.curr_runnable_sum = rq->wrq.prev_runnable_sum = 0;
+	rq->wrq.nt_curr_runnable_sum = rq->wrq.nt_prev_runnable_sum = 0;
+	memset(&rq->wrq.grp_time, 0, sizeof(struct group_cpu_time));
+	rq->wrq.old_busy_time = 0;
+	rq->wrq.old_estimated_time = 0;
+	rq->wrq.old_busy_time_group = 0;
+	rq->wrq.walt_stats.pred_demands_sum = 0;
+	rq->wrq.ed_task = NULL;
+	rq->wrq.curr_table = 0;
+	rq->wrq.prev_top = 0;
+	rq->wrq.curr_top = 0;
+	rq->wrq.last_cc_update = 0;
+	rq->wrq.cycles = 0;
 	for (j = 0; j < NUM_TRACKED_WINDOWS; j++) {
-		memset(&rq->load_subs[j], 0,
+		memset(&rq->wrq.load_subs[j], 0,
 				sizeof(struct load_subtractions));
-		rq->top_tasks[j] = kcalloc(NUM_LOAD_INDICES,
+		rq->wrq.top_tasks[j] = kcalloc(NUM_LOAD_INDICES,
 				sizeof(u8), GFP_NOWAIT);
 		/* No other choice */
-		BUG_ON(!rq->top_tasks[j]);
-		clear_top_tasks_bitmap(rq->top_tasks_bitmap[j]);
+		BUG_ON(!rq->wrq.top_tasks[j]);
+		clear_top_tasks_bitmap(rq->wrq.top_tasks_bitmap[j]);
 	}
-	rq->cum_window_demand = 0;
-	rq->notif_pending = false;
+	rq->wrq.cum_window_demand = 0;
+	rq->wrq.notif_pending = false;
 
 	walt_cpu_util_freq_divisor =
 	    (sched_ravg_window >> SCHED_CAPACITY_SHIFT) * 100;

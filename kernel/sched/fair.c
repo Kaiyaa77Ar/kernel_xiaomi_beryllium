@@ -4378,7 +4378,7 @@ static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	if (!se) {
 		sub_nr_running(rq, task_delta);
-		walt_dec_throttled_cfs_rq_stats(&rq->walt_stats, cfs_rq);
+		walt_dec_throttled_cfs_rq_stats(&rq->wrq.walt_stats, cfs_rq);
 		walt_propagate_cumulative_runnable_avg(
 				   &rq->cumulative_runnable_avg,
 				   cfs_rq->cumulative_runnable_avg, false);
@@ -4455,7 +4455,7 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	if (!se) {
 		add_nr_running(rq, task_delta);
-		walt_inc_throttled_cfs_rq_stats(&rq->walt_stats, tcfs_rq);
+		walt_inc_throttled_cfs_rq_stats(&rq->wrq.walt_stats, tcfs_rq);
 		walt_propagate_cumulative_runnable_avg(
 				   &rq->cumulative_runnable_avg,
 				   tcfs_rq->cumulative_runnable_avg, true);
@@ -7212,7 +7212,7 @@ static inline unsigned long
 cpu_util_next_walt(int cpu, struct task_struct *p, int dst_cpu)
 {
 	unsigned long util =
-			cpu_rq(cpu)->walt_stats.cumulative_runnable_avg;
+			cpu_rq(cpu)->wrq.walt_stats.cumulative_runnable_avg;
 	bool queued = task_on_rq_queued(p);
 
 	util = div64_u64(util,
@@ -8424,7 +8424,7 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 
 #ifdef CONFIG_SCHED_WALT
 	if (env->flags & LBF_IGNORE_PREFERRED_CLUSTER_TASKS &&
-			 !preferred_cluster(cpu_rq(env->dst_cpu)->cluster, p))
+			 !preferred_cluster(cpu_rq(env->dst_cpu)->wrq.cluster, p))
 		return 0;
 
 	/* Don't detach task if it doesn't fit on the destination */
@@ -10402,7 +10402,7 @@ static inline bool min_cap_cluster_has_misfit_task(void)
 	for_each_possible_cpu(cpu) {
 		if (!is_min_capacity_cpu(cpu))
 			break;
-		if (cpu_rq(cpu)->walt_stats.nr_big_tasks)
+		if (cpu_rq(cpu)->wrq.walt_stats.nr_big_tasks)
 			return true;
 	}
 
@@ -11774,7 +11774,7 @@ static void walt_inc_throttled_cfs_rq_stats(struct walt_sched_stats *stats,
 				tcfs_rq->walt_stats.cumulative_runnable_avg,
 				tcfs_rq->walt_stats.pred_demands_sum);
 
-	if (stats == &rq->walt_stats)
+	if (stats == &rq->wrq.walt_stats)
 		walt_fixup_cum_window_demand(rq,
 			tcfs_rq->walt_stats.cumulative_runnable_avg);
 
@@ -11795,7 +11795,7 @@ static void walt_dec_throttled_cfs_rq_stats(struct walt_sched_stats *stats,
 	 * cumulative window demand so that the same can be added
 	 * unconditionally when the cfs_rq is unthrottled.
 	 */
-	if (stats == &rq->walt_stats)
+	if (stats == &rq->wrq.walt_stats)
 		walt_fixup_cum_window_demand(rq,
 			-tcfs_rq->walt_stats.cumulative_runnable_avg);
 }
@@ -11818,9 +11818,9 @@ static void walt_fixup_sched_stats_fair(struct rq *rq, struct task_struct *p,
 			break;
 	}
 
-	/* Fix up rq->walt_stats only if we didn't find any throttled cfs_rq */
+	/* Fix up rq->wrq.walt_stats only if we didn't find any throttled cfs_rq */
 	if (!se) {
-		fixup_cumulative_runnable_avg(&rq->walt_stats,
+		fixup_cumulative_runnable_avg(&rq->wrq.walt_stats,
 					      task_load_delta,
 					      pred_demand_delta);
 		walt_fixup_cum_window_demand(rq, task_load_delta);
@@ -11843,7 +11843,7 @@ static void walt_fixup_nr_big_tasks(struct rq *rq, struct task_struct *p,
 			break;
 	}
 
-	/* Fix up rq->walt_stats only if we didn't find any throttled cfs_rq */
+	/* Fix up rq->wrq.walt_stats only if we didn't find any throttled cfs_rq */
 	if (!se)
 		walt_adjust_nr_big_tasks(rq, delta, inc);
 }
