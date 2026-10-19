@@ -970,18 +970,24 @@
 			< 1958400 MHZ_TO_MBPS(1804, 4) >;
 	};
 
-	l3_cpu0: qcom,l3-cpu0 {
-		compatible = "devfreq-simple-dev";
-		clock-names = "devfreq_clk";
-		clocks = <&clock_cpucc L3_CLUSTER0_VOTE_CLK>;
-		governor = "performance";
-	};
+	qcom,devfreq-l3 {
+		compatible = "qcom,devfreq-fw";
+		reg = <0x17d41000 0x4>, <0x17d43110 0x500>, <0x17d43920 0x4>;
+		reg-names = "en-base", "ftbl-base", "perf-base";
 
-	l3_cpu4: qcom,l3-cpu4 {
-		compatible = "devfreq-simple-dev";
-		clock-names = "devfreq_clk";
-		clocks = <&clock_cpucc L3_CLUSTER1_VOTE_CLK>;
-		governor = "performance";
+		qcom,ftbl-row-size = <32>;
+
+		l3_cpu0: qcom,l3-cpu0 {
+			compatible = "qcom,devfreq-fw-voter";
+		};
+
+		l3_cpu4: qcom,l3-cpu4 {
+			compatible = "qcom,devfreq-fw-voter";
+		};
+
+		l3_cdsp: qcom,l3-cdsp {
+			compatible = "qcom,devfreq-fw-voter";
+		};
 	};
 
 	devfreq_l3lat_0: qcom,cpu0-l3lat-mon {
@@ -1011,13 +1017,6 @@
 			< 1574400  883200000 >,
 			< 1804800  960000000 >,
 			< 1958400 1305600000 >;
-	};
-
-	l3_cdsp: qcom,l3-cdsp {
-		compatible = "devfreq-simple-dev";
-		clock-names = "devfreq_clk";
-		clocks = <&clock_cpucc L3_MISC_VOTE_CLK>;
-		governor = "powersave";
 	};
 
 	cpu_pmu: cpu-pmu {
