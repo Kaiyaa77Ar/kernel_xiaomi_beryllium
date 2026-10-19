@@ -2622,15 +2622,18 @@ static void _set_preferred_cluster(struct related_thread_group *grp)
 	struct task_struct *p;
 	u64 combined_demand = 0;
 	bool group_boost = false;
+	bool prev_skip_min = grp->skip_min;
 	u64 wallclock;
 
-	if (list_empty(&grp->tasks))
-		return;
+	if (list_empty(&grp->tasks)) {
+		grp->skip_min = false;
+		goto out;
+	}
 
 	if (!sysctl_sched_is_big_little) {
 		grp->preferred_cluster = sched_cluster[0];
 		grp->skip_min = false;
-		return;
+		goto out;
 	}
 
 	wallclock = sched_ktime_clock();
@@ -2663,6 +2666,11 @@ static void _set_preferred_cluster(struct related_thread_group *grp)
 	grp->skip_min = !is_min_capacity_cluster(grp->preferred_cluster);
 	grp->last_update = sched_ktime_clock();
 	trace_sched_set_preferred_cluster(grp, combined_demand);
+out:
+	if (grp->id == DEFAULT_CGROUP_COLOC_ID
+	    && grp->skip_min != prev_skip_min
+	    && grp->skip_min)
+		grp->start_ts = sched_clock();
 }
 
 void set_preferred_cluster(struct related_thread_group *grp)
@@ -2720,6 +2728,27 @@ static inline struct related_thread_group*
 lookup_related_thread_group(unsigned int group_id)
 {
 	return related_thread_groups[group_id];
+}
+
+bool is_rtgb_active(void)
+{
+	struct related_thread_group *grp;
+
+	grp = lookup_related_thread_group(DEFAULT_CGROUP_COLOC_ID);
+	return grp && grp->skip_min;
+}
+
+u64 get_rtgb_active_time(void)
+{
+	struct related_thread_group *grp;
+	u64 now = sched_clock();
+
+	grp = lookup_related_thread_group(DEFAULT_CGROUP_COLOC_ID);
+
+	if (grp && grp->skip_min && grp->start_ts)
+		return now - grp->start_ts;
+
+	return 0;
 }
 
 int alloc_related_thread_groups(void)
