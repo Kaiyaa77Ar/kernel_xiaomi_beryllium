@@ -152,11 +152,16 @@ extern void get_iowait_load(unsigned long *nr_waiters, unsigned long *load);
 extern u64 nr_running_integral(unsigned int cpu);
 #endif
 
+struct sched_avg_stats {
+	int nr;
+	int nr_misfit;
+	int nr_max;
+	int nr_scaled;
+};
+
 #ifdef CONFIG_SMP
 extern void sched_update_nr_prod(int cpu, long delta, bool inc);
-extern void sched_get_nr_running_avg(int *avg, int *iowait_avg, int *big_avg,
-				     unsigned int *max_nr,
-				     unsigned int *big_max_nr);
+extern void sched_get_nr_running_avg(struct sched_avg_stats *stats);
 extern unsigned int sched_get_cpu_util(int cpu);
 extern u32 sched_get_wake_up_idle(struct task_struct *p);
 extern int sched_set_wake_up_idle(struct task_struct *p, int wake_up_idle);
@@ -164,9 +169,7 @@ extern int sched_set_wake_up_idle(struct task_struct *p, int wake_up_idle);
 static inline void sched_update_nr_prod(int cpu, long delta, bool inc)
 {
 }
-static inline void sched_get_nr_running_avg(int *avg, int *iowait_avg,
-				int *big_avg, unsigned int *max_nr,
-				unsigned int *big_max_nr)
+static inline void sched_get_nr_running_avg(struct sched_avg_stats *stats)
 {
 }
 static inline unsigned int sched_get_cpu_util(int cpu)
