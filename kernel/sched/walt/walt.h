@@ -51,7 +51,7 @@ extern __read_mostly unsigned int sched_window_stats_policy;
 extern __read_mostly unsigned int sched_group_upmigrate;
 extern __read_mostly unsigned int sched_group_downmigrate;
 
-extern struct sched_cluster init_cluster;
+extern struct walt_sched_cluster init_cluster;
 
 extern void update_task_ravg(struct task_struct *p, struct rq *rq, int event,
 						u64 wallclock, u64 irqtime);
@@ -192,7 +192,7 @@ static inline int exiting_task(struct task_struct *p)
 	return (p->ravg.sum_history[0] == EXITING_TASK_MARKER);
 }
 
-static inline struct sched_cluster *cpu_cluster(int cpu)
+static inline struct walt_sched_cluster *cpu_cluster(int cpu)
 {
 	return cpu_rq(cpu)->wrq.cluster;
 }
@@ -271,7 +271,7 @@ extern void sched_account_irqtime(int cpu, struct task_struct *curr,
 
 static inline void assign_cluster_ids(struct list_head *head)
 {
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	int pos = 0;
 
 	list_for_each_entry(cluster, head, list) {

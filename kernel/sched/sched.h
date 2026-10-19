@@ -63,7 +63,7 @@ struct load_subtractions {
 #define NUM_TRACKED_WINDOWS 2
 #define NUM_LOAD_INDICES 1000
 
-struct sched_cluster {
+struct walt_sched_cluster {
 	raw_spinlock_t load_lock;
 	struct list_head list;
 	struct cpumask cpus;
@@ -92,7 +92,7 @@ struct sched_cluster {
 };
 
 struct walt_rq {
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	struct cpumask freq_domain_cpumask;
 	struct walt_sched_stats walt_stats;
 
@@ -2438,7 +2438,7 @@ static inline bool walt_want_remote_wakeup(void)
 	return sysctl_sched_many_wakeup_threshold < WALT_MANY_WAKEUP_DEFAULT;
 }
 
-static inline int cluster_first_cpu(struct sched_cluster *cluster)
+static inline int cluster_first_cpu(struct walt_sched_cluster *cluster)
 {
 	return cpumask_first(&cluster->cpus);
 }
@@ -2448,14 +2448,14 @@ struct related_thread_group {
 	raw_spinlock_t lock;
 	struct list_head tasks;
 	struct list_head list;
-	struct sched_cluster *preferred_cluster;
+	struct walt_sched_cluster *preferred_cluster;
 	bool skip_min;
 	struct rcu_head rcu;
 	u64 last_update;
 };
 
 extern struct list_head cluster_head;
-extern struct sched_cluster *sched_cluster[NR_CPUS];
+extern struct walt_sched_cluster *sched_cluster[NR_CPUS];
 
 #define for_each_sched_cluster(cluster) \
 	list_for_each_entry_rcu(cluster, &cluster_head, list)
@@ -2488,7 +2488,7 @@ extern unsigned int max_power_cost;
 extern unsigned int up_down_migrate_scale_factor;
 extern unsigned int sysctl_sched_restrict_cluster_spill;
 extern unsigned int sched_pred_alert_load;
-extern struct sched_cluster init_cluster;
+extern struct walt_sched_cluster init_cluster;
 extern unsigned int  __read_mostly sched_short_sleep_task_threshold;
 extern unsigned int  __read_mostly sched_long_cpu_selection_threshold;
 extern unsigned int  __read_mostly sched_big_waker_task_load;
@@ -2531,7 +2531,7 @@ static inline unsigned int cpu_min_freq(int cpu)
 	return cpu_rq(cpu)->wrq.cluster->min_freq;
 }
 
-static inline unsigned int cluster_max_freq(struct sched_cluster *cluster)
+static inline unsigned int cluster_max_freq(struct walt_sched_cluster *cluster)
 {
 	/*
 	 * Governor and thermal driver don't know the other party's mitigation
@@ -2575,7 +2575,7 @@ static inline void __update_min_max_capacity(void)
  * that "most" efficient cpu gets a load_scale_factor of 1
  */
 static inline unsigned long
-load_scale_cpu_efficiency(struct sched_cluster *cluster)
+load_scale_cpu_efficiency(struct walt_sched_cluster *cluster)
 {
 	return DIV_ROUND_UP(1024 * max_possible_efficiency,
 			    cluster->efficiency);
@@ -2586,13 +2586,13 @@ load_scale_cpu_efficiency(struct sched_cluster *cluster)
  * (max_possible_freq), so that one with best max_freq gets a load_scale_factor
  * of 1.
  */
-static inline unsigned long load_scale_cpu_freq(struct sched_cluster *cluster)
+static inline unsigned long load_scale_cpu_freq(struct walt_sched_cluster *cluster)
 {
 	return DIV_ROUND_UP(1024 * max_possible_freq,
 			   cluster_max_freq(cluster));
 }
 
-static inline int compute_load_scale_factor(struct sched_cluster *cluster)
+static inline int compute_load_scale_factor(struct walt_sched_cluster *cluster)
 {
 	int load_scale = 1024;
 
@@ -2658,7 +2658,7 @@ static inline u64 scale_load_to_cpu(u64 task_load, int cpu)
  * least efficient cpu gets capacity of 1024
  */
 static unsigned long
-capacity_scale_cpu_efficiency(struct sched_cluster *cluster)
+capacity_scale_cpu_efficiency(struct walt_sched_cluster *cluster)
 {
 	return (1024 * cluster->efficiency) / min_possible_efficiency;
 }
@@ -2667,12 +2667,12 @@ capacity_scale_cpu_efficiency(struct sched_cluster *cluster)
  * Return 'capacity' of a cpu in reference to cpu with lowest max_freq
  * (min_max_freq), such that one with lowest max_freq gets capacity of 1024.
  */
-static unsigned long capacity_scale_cpu_freq(struct sched_cluster *cluster)
+static unsigned long capacity_scale_cpu_freq(struct walt_sched_cluster *cluster)
 {
 	return (1024 * cluster_max_freq(cluster)) / min_max_freq;
 }
 
-static inline int compute_capacity(struct sched_cluster *cluster)
+static inline int compute_capacity(struct walt_sched_cluster *cluster)
 {
 	int capacity = 1024;
 
@@ -2735,9 +2735,9 @@ static inline int same_freq_domain(int src_cpu, int dst_cpu)
 #define	CPU_RESERVED	1
 
 extern int sched_boost(void);
-extern int preferred_cluster(struct sched_cluster *cluster,
+extern int preferred_cluster(struct walt_sched_cluster *cluster,
 						struct task_struct *p);
-extern struct sched_cluster *rq_cluster(struct rq *rq);
+extern struct walt_sched_cluster *rq_cluster(struct rq *rq);
 extern void reset_task_stats(struct task_struct *p);
 extern void clear_top_tasks_bitmap(unsigned long *bitmap);
 
@@ -2858,7 +2858,7 @@ static inline bool is_full_throttle_boost(void)
 
 extern void walt_map_freq_to_load(void);
 
-static inline bool is_min_capacity_cluster(struct sched_cluster *cluster)
+static inline bool is_min_capacity_cluster(struct walt_sched_cluster *cluster)
 {
 	return is_min_capacity_cpu(cluster_first_cpu(cluster));
 }
@@ -2867,7 +2867,7 @@ static inline bool is_min_capacity_cluster(struct sched_cluster *cluster)
 
 struct walt_sched_stats;
 struct related_thread_group;
-struct sched_cluster;
+struct walt_sched_cluster;
 
 static inline bool task_sched_boost(struct task_struct *p)
 {
@@ -2901,12 +2901,12 @@ static inline bool is_max_capacity_cpu(int cpu) { return true; }
 static inline bool is_min_capacity_cpu(int cpu) { return true; }
 
 static inline int
-preferred_cluster(struct sched_cluster *cluster, struct task_struct *p)
+preferred_cluster(struct walt_sched_cluster *cluster, struct task_struct *p)
 {
 	return 1;
 }
 
-static inline struct sched_cluster *rq_cluster(struct rq *rq)
+static inline struct walt_sched_cluster *rq_cluster(struct rq *rq)
 {
 	return NULL;
 }
