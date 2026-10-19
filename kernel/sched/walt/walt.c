@@ -2668,9 +2668,11 @@ static void _set_preferred_cluster(struct related_thread_group *grp)
 	trace_sched_set_preferred_cluster(grp, combined_demand);
 out:
 	if (grp->id == DEFAULT_CGROUP_COLOC_ID
-	    && grp->skip_min != prev_skip_min
-	    && grp->skip_min)
-		grp->start_ts = sched_clock();
+	    && grp->skip_min != prev_skip_min) {
+		if (grp->skip_min)
+			grp->start_ts = sched_clock();
+		sched_update_hyst_times();
+	}
 }
 
 void set_preferred_cluster(struct related_thread_group *grp)
