@@ -552,7 +552,7 @@ u64 freq_policy_load(struct rq *rq)
 {
 	unsigned int reporting_policy = sysctl_sched_freq_reporting_policy;
 	int freq_aggr_thresh = sched_freq_aggregate_threshold;
-	struct sched_cluster *cluster = rq->wrq.cluster;
+	struct walt_sched_cluster *cluster = rq->wrq.cluster;
 	u64 aggr_grp_load = cluster->aggr_grp_load;
 	u64 load, tt_load = 0;
 	u64 coloc_boost_load = cluster->coloc_boost_load;
@@ -675,7 +675,7 @@ static void update_rq_load_subtractions(int index, struct rq *rq,
 void update_cluster_load_subtractions(struct task_struct *p,
 					int cpu, u64 ws, bool new_task)
 {
-	struct sched_cluster *cluster = cpu_cluster(cpu);
+	struct walt_sched_cluster *cluster = cpu_cluster(cpu);
 	struct cpumask cluster_cpus = cluster->cpus;
 	u64 prev_ws = ws - sched_ravg_window;
 	int i;
@@ -2140,15 +2140,15 @@ void mark_task_starting(struct task_struct *p)
 
 static cpumask_t all_cluster_cpus = CPU_MASK_NONE;
 DECLARE_BITMAP(all_cluster_ids, NR_CPUS);
-struct sched_cluster *sched_cluster[NR_CPUS];
+struct walt_sched_cluster *sched_cluster[NR_CPUS];
 int num_clusters;
 
 struct list_head cluster_head;
 
 static void
-insert_cluster(struct sched_cluster *cluster, struct list_head *head)
+insert_cluster(struct walt_sched_cluster *cluster, struct list_head *head)
 {
-	struct sched_cluster *tmp;
+	struct walt_sched_cluster *tmp;
 	struct list_head *iter = head;
 
 	list_for_each_entry(tmp, head, list) {
@@ -2160,11 +2160,11 @@ insert_cluster(struct sched_cluster *cluster, struct list_head *head)
 	list_add(&cluster->list, iter);
 }
 
-static struct sched_cluster *alloc_new_cluster(const struct cpumask *cpus)
+static struct walt_sched_cluster *alloc_new_cluster(const struct cpumask *cpus)
 {
-	struct sched_cluster *cluster = NULL;
+	struct walt_sched_cluster *cluster = NULL;
 
-	cluster = kzalloc(sizeof(struct sched_cluster), GFP_ATOMIC);
+	cluster = kzalloc(sizeof(struct walt_sched_cluster), GFP_ATOMIC);
 	if (!cluster) {
 		__WARN_printf("Cluster allocation failed.  Possible bad scheduling\n");
 		return NULL;
@@ -2202,7 +2202,7 @@ static struct sched_cluster *alloc_new_cluster(const struct cpumask *cpus)
 
 static void add_cluster(const struct cpumask *cpus, struct list_head *head)
 {
-	struct sched_cluster *cluster = alloc_new_cluster(cpus);
+	struct walt_sched_cluster *cluster = alloc_new_cluster(cpus);
 	int i;
 
 	if (!cluster)
@@ -2216,7 +2216,7 @@ static void add_cluster(const struct cpumask *cpus, struct list_head *head)
 	num_clusters++;
 }
 
-static int compute_max_possible_capacity(struct sched_cluster *cluster)
+static int compute_max_possible_capacity(struct walt_sched_cluster *cluster)
 {
 	int capacity = 1024;
 
@@ -2243,11 +2243,11 @@ unsigned int max_power_cost = 1;
 static int
 compare_clusters(void *priv, struct list_head *a, struct list_head *b)
 {
-	struct sched_cluster *cluster1, *cluster2;
+	struct walt_sched_cluster *cluster1, *cluster2;
 	int ret;
 
-	cluster1 = container_of(a, struct sched_cluster, list);
-	cluster2 = container_of(b, struct sched_cluster, list);
+	cluster1 = container_of(a, struct walt_sched_cluster, list);
+	cluster2 = container_of(b, struct walt_sched_cluster, list);
 
 	/*
 	 * Don't assume higher capacity means higher power. If the
@@ -2265,7 +2265,7 @@ compare_clusters(void *priv, struct list_head *a, struct list_head *b)
 
 static void sort_clusters(void)
 {
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	struct list_head new_head;
 	unsigned int tmp_max = 1;
 
@@ -2349,7 +2349,7 @@ void walt_sched_energy_populated_callback(void)
 
 static void update_all_clusters_stats(void)
 {
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	u64 highest_mpc = 0, lowest_mpc = U64_MAX;
 	unsigned long flags;
 
@@ -2408,7 +2408,7 @@ void update_cluster_topology(void)
 	update_all_clusters_stats();
 }
 
-struct sched_cluster init_cluster = {
+struct walt_sched_cluster init_cluster = {
 	.list			=	LIST_HEAD_INIT(init_cluster.list),
 	.id			=	0,
 	.max_power_cost		=	1,
@@ -2446,7 +2446,7 @@ static int cpufreq_notifier_policy(struct notifier_block *nb,
 		unsigned long val, void *data)
 {
 	struct cpufreq_policy *policy = (struct cpufreq_policy *)data;
-	struct sched_cluster *cluster = NULL;
+	struct walt_sched_cluster *cluster = NULL;
 	struct cpumask policy_cluster = *policy->related_cpus;
 	unsigned int orig_max_freq = 0;
 	int i, j, update_capacity = 0;
@@ -2515,7 +2515,7 @@ static int cpufreq_notifier_trans(struct notifier_block *nb,
 	struct cpufreq_freqs *freq = (struct cpufreq_freqs *)data;
 	unsigned int cpu = freq->cpu, new_freq = freq->new;
 	unsigned long flags;
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	struct cpumask policy_cpus = cpu_rq(cpu)->wrq.freq_domain_cpumask;
 	int i, j;
 
@@ -2603,7 +2603,7 @@ unsigned int __read_mostly sched_group_downmigrate = 19000000;
 unsigned int __read_mostly sysctl_sched_group_downmigrate_pct = 95;
 
 static int
-group_will_fit(struct sched_cluster *cluster, struct related_thread_group *grp,
+group_will_fit(struct walt_sched_cluster *cluster, struct related_thread_group *grp,
 						u64 demand, bool group_boost)
 {
 	int cpu = cluster_first_cpu(cluster);
@@ -2639,10 +2639,10 @@ unsigned long __weak arch_get_cpu_efficiency(int cpu)
 }
 
 /* Return cluster which can offer required capacity for group */
-static struct sched_cluster *best_cluster(struct related_thread_group *grp,
+static struct walt_sched_cluster *best_cluster(struct related_thread_group *grp,
 					u64 total_demand, bool group_boost)
 {
-	struct sched_cluster *cluster = NULL;
+	struct walt_sched_cluster *cluster = NULL;
 
 	for_each_sched_cluster(cluster) {
 		if (group_will_fit(cluster, grp, total_demand, group_boost))
@@ -2652,7 +2652,7 @@ static struct sched_cluster *best_cluster(struct related_thread_group *grp,
 	return sched_cluster[0];
 }
 
-int preferred_cluster(struct sched_cluster *cluster, struct task_struct *p)
+int preferred_cluster(struct walt_sched_cluster *cluster, struct task_struct *p)
 {
 	struct related_thread_group *grp;
 	int rc = 1;
@@ -2998,7 +2998,7 @@ int sync_cgroup_colocation(struct task_struct *p, bool insert)
 void update_cpu_cluster_capacity(const cpumask_t *cpus)
 {
 	int i;
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	struct cpumask cpumask;
 	unsigned long flags;
 
@@ -3058,7 +3058,7 @@ static DEFINE_SPINLOCK(cpu_freq_min_max_lock);
 void sched_update_cpu_freq_min_max(const cpumask_t *cpus, u32 fmin, u32 fmax)
 {
 	struct cpumask cpumask;
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	int i, update_capacity = 0;
 	unsigned long flags;
 
@@ -3200,7 +3200,7 @@ static u64 coloc_boost_load;
 
 void walt_map_freq_to_load(void)
 {
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 
 	for_each_sched_cluster(cluster) {
 		if (is_min_capacity_cluster(cluster)) {
@@ -3220,7 +3220,7 @@ void walt_map_freq_to_load(void)
 static void walt_update_coloc_boost_load(void)
 {
 	struct related_thread_group *grp;
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 
 	if (!sysctl_sched_little_cluster_coloc_fmin_khz ||
 			sysctl_sched_boost == CONSERVATIVE_BOOST)
@@ -3265,7 +3265,7 @@ done:
  */
 void walt_irq_work(struct irq_work *irq_work)
 {
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	struct rq *rq;
 	int cpu;
 	u64 wc, total_grp_load = 0;
