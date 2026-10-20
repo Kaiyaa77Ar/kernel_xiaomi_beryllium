@@ -107,6 +107,7 @@ struct walt_rq {
 	u64 irqload_ts;
 	unsigned int static_cpu_pwr_cost;
 	struct task_struct *ed_task;
+	u64 task_exec_scale;
 	struct cpu_cycle cc;
 	u64 old_busy_time, old_busy_time_group;
 	u64 old_estimated_time;
