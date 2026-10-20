@@ -1412,6 +1412,23 @@ TRACE_EVENT(sched_contrib_scale_f,
 		  __entry->cpu_scale_factor)
 );
 
+TRACE_EVENT(walt_window_rollover,
+
+	TP_PROTO(u64 window_start),
+
+	TP_ARGS(window_start),
+
+	TP_STRUCT__entry(
+		__field(u64, window_start)
+	),
+
+	TP_fast_assign(
+		__entry->window_start = window_start;
+	),
+
+	TP_printk("window_start=%llu", __entry->window_start)
+);
+
 #ifdef CONFIG_SMP
 
 #ifdef CONFIG_SCHED_WALT
