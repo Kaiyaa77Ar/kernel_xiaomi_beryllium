@@ -2334,6 +2334,18 @@ static void update_all_clusters_stats(void)
 	release_rq_locks_irqrestore(cpu_possible_mask, &flags);
 }
 
+static inline void walt_update_group_thresholds(void)
+{
+	unsigned int min_scale = arch_scale_cpu_capacity(NULL,
+				cluster_first_cpu(sched_cluster[0]));
+	u64 min_ms = min_scale * (sched_ravg_window >> SCHED_CAPACITY_SHIFT);
+
+	sched_group_upmigrate = div64_ul(min_ms *
+			sysctl_sched_group_upmigrate_pct, 100);
+	sched_group_downmigrate = div64_ul(min_ms *
+			sysctl_sched_group_downmigrate_pct, 100);
+}
+
 void update_cluster_topology(void)
 {
 	struct cpumask cpus = *cpu_possible_mask;
@@ -2358,6 +2370,7 @@ void update_cluster_topology(void)
 	 */
 	move_list(&cluster_head, &new_head, false);
 	update_all_clusters_stats();
+	walt_update_group_thresholds();
 }
 
 struct walt_sched_cluster init_cluster = {
@@ -2453,6 +2466,8 @@ static int cpufreq_notifier_policy(struct notifier_block *nb,
 
 	if (update_capacity)
 		update_cpu_cluster_capacity(policy->related_cpus);
+
+	walt_update_group_thresholds();
 
 	return 0;
 }
@@ -3418,12 +3433,9 @@ int walt_proc_update_handler(struct ctl_table *table, int write,
 		return ret;
 	}
 
-	if (data == &sysctl_sched_group_upmigrate_pct)
-		sched_group_upmigrate =
-		    pct_to_real(sysctl_sched_group_upmigrate_pct);
-	else if (data == &sysctl_sched_group_downmigrate_pct)
-		sched_group_downmigrate =
-		    pct_to_real(sysctl_sched_group_downmigrate_pct);
+	if (data == &sysctl_sched_group_upmigrate_pct ||
+			data == &sysctl_sched_group_downmigrate_pct)
+		walt_update_group_thresholds();
 	else
 		ret = -EINVAL;
 	mutex_unlock(&mutex);
