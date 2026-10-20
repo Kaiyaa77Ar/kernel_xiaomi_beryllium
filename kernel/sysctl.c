@@ -520,9 +520,9 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &two_hundred_fifty_five,
 	},
 	{
-		.procname	= "sched_coloc_busy_hyst_ns",
-		.data		= &sysctl_sched_coloc_busy_hyst,
-		.maxlen		= sizeof(unsigned int),
+		.procname	= "sched_coloc_busy_hyst_cpu_ns",
+		.data		= &sysctl_sched_coloc_busy_hyst_cpu,
+		.maxlen		= sizeof(unsigned int) * NR_CPUS,
 		.mode		= 0644,
 		.proc_handler	= proc_douintvec_minmax_schedhyst,
 		.extra1		= &zero,
@@ -536,6 +536,15 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_douintvec_minmax_schedhyst,
 		.extra1		= &zero,
 		.extra2		= &one_hundred_thousand,
+	},
+	{
+		.procname	= "sched_coloc_busy_hyst_cpu_busy_pct",
+		.data		= &sysctl_sched_coloc_busy_hyst_cpu_busy_pct,
+		.maxlen		= sizeof(unsigned int) * NR_CPUS,
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec_minmax_schedhyst,
+		.extra1		= &zero,
+		.extra2		= &one_hundred,
 	},
 #endif
 	{
@@ -2807,7 +2816,12 @@ static int proc_dointvec_minmax_coredump(struct ctl_table *table, int write,
 static int proc_douintvec_minmax_schedhyst(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	int ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	int ret;
+
+	if (table->maxlen > (sizeof(unsigned int) * num_possible_cpus()))
+		table->maxlen = sizeof(unsigned int) * num_possible_cpus();
+
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 
 	if (!ret && write)
 		sched_update_hyst_times();
