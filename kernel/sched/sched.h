@@ -101,9 +101,10 @@ struct walt_rq {
 	s64 cum_window_start;
 	unsigned long walt_flags;
 
-	u64 cur_irqload;
 	u64 avg_irqload;
-	u64 irqload_ts;
+	u64 last_irq_window;
+	u64 prev_irq_time;
+	bool high_irqload;
 	unsigned int static_cpu_pwr_cost;
 	struct task_struct *ed_task;
 	u64 task_exec_scale;

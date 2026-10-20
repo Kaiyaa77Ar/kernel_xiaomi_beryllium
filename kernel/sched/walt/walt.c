@@ -141,7 +141,8 @@ static void release_rq_locks_irqrestore(const cpumask_t *cpus,
 /* 1 -> use PELT based load stats, 0 -> use window-based load stats */
 unsigned int __read_mostly walt_disabled = 0;
 
-__read_mostly unsigned int sysctl_sched_cpu_high_irqload = (10 * NSEC_PER_MSEC);
+__read_mostly unsigned int sysctl_walt_cpu_high_irqload = 95;
+static unsigned int walt_cpu_high_irqload;
 
 unsigned int sysctl_sched_walt_rotate_big_tasks;
 unsigned int walt_rotation_enabled;
@@ -488,8 +489,7 @@ void sched_account_irqtime(int cpu, struct task_struct *curr,
 				 u64 delta, u64 wallclock)
 {
 	struct rq *rq = cpu_rq(cpu);
-	unsigned long flags, nr_windows;
-	u64 cur_jiffies_ts;
+	unsigned long flags;
 
 	raw_spin_lock_irqsave(&rq->lock, flags);
 
@@ -498,29 +498,11 @@ void sched_account_irqtime(int cpu, struct task_struct *curr,
 	 * consistency.
 	 */
 	delta += sched_clock() - wallclock;
-	cur_jiffies_ts = get_jiffies_64();
 
 	if (is_idle_task(curr))
 		update_task_ravg(curr, rq, IRQ_UPDATE, sched_ktime_clock(),
 				 delta);
 
-	nr_windows = cur_jiffies_ts - rq->wrq.irqload_ts;
-
-	if (nr_windows) {
-		if (nr_windows < 10) {
-			/* Decay CPU's irqload by 3/4 for each window. */
-			rq->wrq.avg_irqload *= (3 * nr_windows);
-			rq->wrq.avg_irqload = div64_u64(rq->wrq.avg_irqload,
-						    4 * nr_windows);
-		} else {
-			rq->wrq.avg_irqload = 0;
-		}
-		rq->wrq.avg_irqload += rq->wrq.cur_irqload;
-		rq->wrq.cur_irqload = 0;
-	}
-
-	rq->wrq.cur_irqload += delta;
-	rq->wrq.irqload_ts = cur_jiffies_ts;
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
 
@@ -2371,6 +2353,8 @@ void update_cluster_topology(void)
 	move_list(&cluster_head, &new_head, false);
 	update_all_clusters_stats();
 	walt_update_group_thresholds();
+	walt_cpu_high_irqload = mult_frac((u64)sched_ravg_window,
+					sysctl_walt_cpu_high_irqload, 100);
 }
 
 struct walt_sched_cluster init_cluster = {
@@ -3268,6 +3252,36 @@ done:
  * Runs in hard-irq context. This should ideally run just after the latest
  * window roll-over.
  */
+static void walt_update_irqload(struct rq *rq)
+{
+	u64 irq_delta = 0;
+	unsigned int nr_windows = 0;
+	u64 cur_irq_time;
+	u64 last_irq_window = READ_ONCE(rq->wrq.last_irq_window);
+
+	if (rq->wrq.window_start > last_irq_window)
+		nr_windows = div64_u64(rq->wrq.window_start - last_irq_window,
+				       sched_ravg_window);
+
+	if (nr_windows < 10)
+		rq->wrq.avg_irqload = mult_frac(rq->wrq.avg_irqload, 3, 4);
+	else
+		rq->wrq.avg_irqload = 0;
+
+	cur_irq_time = irq_time_read(cpu_of(rq));
+	if (cur_irq_time > rq->wrq.prev_irq_time)
+		irq_delta = cur_irq_time - rq->wrq.prev_irq_time;
+
+	rq->wrq.avg_irqload += irq_delta;
+	rq->wrq.prev_irq_time = cur_irq_time;
+
+	if (nr_windows < SCHED_HIGH_IRQ_TIMEOUT)
+		rq->wrq.high_irqload = (rq->wrq.avg_irqload >=
+					walt_cpu_high_irqload);
+	else
+		rq->wrq.high_irqload = 0;
+}
+
 void walt_irq_work(struct irq_work *irq_work)
 {
 	struct walt_sched_cluster *cluster;
@@ -3334,6 +3348,9 @@ void walt_irq_work(struct irq_work *irq_work)
 			}
 
 			cpufreq_update_util(rq, nflag);
+
+			if (!is_migration)
+				walt_update_irqload(rq);
 		}
 	}
 
@@ -3418,6 +3435,27 @@ fill_util:
 	}
 }
 
+int walt_high_irqload_handler(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret;
+	static DEFINE_MUTEX(mutex);
+
+	mutex_lock(&mutex);
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+
+	if (ret || !write) {
+		mutex_unlock(&mutex);
+		return ret;
+	}
+
+	walt_cpu_high_irqload = div64_u64((u64)sched_ravg_window *
+				sysctl_walt_cpu_high_irqload, (u64) 100);
+	mutex_unlock(&mutex);
+
+	return ret;
+}
+
 int walt_proc_update_handler(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp,
 			     loff_t *ppos)
@@ -3457,9 +3495,10 @@ void walt_sched_init(struct rq *rq)
 	rq->wrq.cum_window_start = 0;
 	rq->wrq.walt_stats.nr_big_tasks = 0;
 	rq->wrq.walt_flags = 0;
-	rq->wrq.cur_irqload = 0;
 	rq->wrq.avg_irqload = 0;
-	rq->wrq.irqload_ts = 0;
+	rq->wrq.last_irq_window = 0;
+	rq->wrq.prev_irq_time = 0;
+	rq->wrq.high_irqload = false;
 	rq->wrq.static_cpu_pwr_cost = 0;
 	rq->wrq.cc.cycles = 1;
 	rq->wrq.cc.time = 1;

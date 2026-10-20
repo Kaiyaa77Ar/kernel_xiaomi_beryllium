@@ -128,6 +128,7 @@ static int __maybe_unused four = 4;
 static unsigned long zero_ul;
 static unsigned long one_ul = 1;
 static unsigned long long_max = LONG_MAX;
+static int fifty = 50;
 static int one_hundred = 100;
 static int __maybe_unused one_thousand = 1000;
 #ifdef CONFIG_SCHED_WALT
@@ -390,11 +391,13 @@ static struct ctl_table kern_table[] = {
 #endif
 #ifdef CONFIG_SCHED_WALT
 	{
-		.procname       = "sched_cpu_high_irqload",
-		.data           = &sysctl_sched_cpu_high_irqload,
-		.maxlen         = sizeof(unsigned int),
-		.mode           = 0644,
-		.proc_handler   = proc_dointvec,
+		.procname	= "sched_cpu_high_irqload",
+		.data		= &sysctl_walt_cpu_high_irqload,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= walt_high_irqload_handler,
+		.extra1		= &fifty,
+		.extra2		= &one_hundred,
 	},
 	{
 		.procname	= "sched_group_upmigrate",

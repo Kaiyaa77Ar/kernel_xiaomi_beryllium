@@ -172,13 +172,7 @@ static inline u64 sched_irqload(int cpu)
 	struct rq *rq = cpu_rq(cpu);
 	s64 delta;
 
-	delta = get_jiffies_64() - rq->wrq.irqload_ts;
-	/*
-	 * Current context can be preempted by irq and rq->wrq.irqload_ts can be
-	 * updated by irq context so that delta can be negative.
-	 * But this is okay and we can safely return as this means there
-	 * was recent irq occurrence.
-	 */
+	delta = rq->wrq.window_start - rq->wrq.last_irq_window;
 
 	if (delta < SCHED_HIGH_IRQ_TIMEOUT)
 		return rq->wrq.avg_irqload;
@@ -188,7 +182,7 @@ static inline u64 sched_irqload(int cpu)
 
 static inline int sched_cpu_high_irqload(int cpu)
 {
-	return sched_irqload(cpu) >= sysctl_sched_cpu_high_irqload;
+	return cpu_rq(cpu)->wrq.high_irqload;
 }
 
 static inline int exiting_task(struct task_struct *p)

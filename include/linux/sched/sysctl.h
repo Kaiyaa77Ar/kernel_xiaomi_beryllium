@@ -30,7 +30,11 @@ extern unsigned int sysctl_sched_capacity_margin_down;
 
 #ifdef CONFIG_SCHED_WALT
 extern unsigned int sysctl_sched_init_task_load_pct;
-extern unsigned int sysctl_sched_cpu_high_irqload;
+extern unsigned int sysctl_walt_cpu_high_irqload;
+
+extern int
+walt_high_irqload_handler(struct ctl_table *table, int write,
+			  void __user *buffer, size_t *lenp, loff_t *ppos);
 extern unsigned int sysctl_sched_use_walt_cpu_util;
 extern unsigned int sysctl_sched_use_walt_task_util;
 extern unsigned int sysctl_sched_boost;
