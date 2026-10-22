@@ -5840,7 +5840,7 @@ static inline bool task_fits_capacity(struct task_struct *p,
 	else
 		margin = sysctl_sched_capacity_margin;
 
-	return capacity * 1024 > uclamp_task(p) * margin;
+	return capacity * 1024 > boosted_task_util(p) * margin;
 }
 
 static inline bool task_demand_fits(struct task_struct *p, int cpu)
@@ -6719,8 +6719,8 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 	 * performance CPU, thus requiring to maximise target_capacity. In this
 	 * case we initialise target_capacity to 0.
 	 */
-	prefer_idle = uclamp_latency_sensitive(p);
-	boosted = fbt_env->boosted || uclamp_boosted(p);
+	prefer_idle = schedtune_prefer_idle(p) > 0;
+	boosted = fbt_env->boosted;
 	if (prefer_idle && boosted)
 		target_capacity = 0;
 
@@ -7310,8 +7310,8 @@ static void select_cpu_candidates(struct sched_domain *sd, cpumask_t *cpus,
 {
 	int highest_spare_cap_cpu = prev_cpu, best_idle_cpu = -1;
 	unsigned long spare_cap, max_spare_cap, util, cpu_cap;
-	bool prefer_idle = uclamp_latency_sensitive(p);
-	bool boosted = uclamp_boosted(p);
+	bool prefer_idle = schedtune_prefer_idle(p) > 0;
+	bool boosted = schedtune_task_boost(p) > 0 || per_task_boost(p) > 0;
 	unsigned long target_cap = boosted ? 0 : ULONG_MAX;
 	unsigned long highest_spare_cap = 0;
 	unsigned int min_exit_lat = UINT_MAX;
@@ -7329,8 +7329,6 @@ static void select_cpu_candidates(struct sched_domain *sd, cpumask_t *cpus,
 			util = energy_cpu_util(cpu, p, cpu);
 			cpu_cap = capacity_orig_of(cpu);
 			spare_cap = cpu_cap - util;
-
-			util = uclamp_util_with(cpu_rq(cpu), util, p);
 
 			if (cpu_cap * 1024 < util * sysctl_sched_capacity_margin)
 				continue;
@@ -7532,7 +7530,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 
 	/* If there is only one sensible candidate, select it now. */
 	cpu = cpumask_first(candidates);
-	if (weight == 1 && ((uclamp_latency_sensitive(p) && idle_cpu(cpu)) ||
+	if (weight == 1 && ((schedtune_prefer_idle(p) > 0 && idle_cpu(cpu)) ||
 			    (cpu == prev_cpu))) {
 		best_energy_cpu = cpu;
 		goto unlock;
