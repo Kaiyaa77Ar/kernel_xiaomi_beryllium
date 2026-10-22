@@ -6,6 +6,7 @@
 #include <linux/kobject.h>
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
+#include <linux/sdm845_compat.h>
 #include <linux/types.h>
 
 #ifdef CONFIG_ENERGY_MODEL
