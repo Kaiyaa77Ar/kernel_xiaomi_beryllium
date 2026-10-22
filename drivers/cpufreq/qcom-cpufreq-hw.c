@@ -6,6 +6,7 @@
 #include <linux/cpufreq.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
@@ -362,8 +363,11 @@ static int qcom_cpufreq_hw_cpu_init(struct cpufreq_policy *policy)
 		dev_err(cpu_dev, "OPP table is not ready\n");
 
 	policy->fast_switch_possible = true;
-	policy->freq_table = c->table;
 	policy->driver_data = c;
+
+	ret = cpufreq_table_validate_and_show(policy, c->table);
+	if (ret)
+		return ret;
 
 	if (c->dcvsh_irq > 0 && !c->is_irq_requested) {
 		snprintf(c->dcvsh_irq_name, sizeof(c->dcvsh_irq_name),
@@ -565,6 +569,8 @@ static int qcom_get_related_cpus(int index, struct cpumask *m)
 
 		if (index == args.args[0])
 			cpumask_set_cpu(cpu, m);
+
+		of_node_put(args.np);
 	}
 
 	return 0;
@@ -689,12 +695,14 @@ static int qcom_resources_init(struct platform_device *pdev)
 
 		ret = of_parse_phandle_with_args(cpu_np, "qcom,freq-domain",
 				"#freq-domain-cells", 0, &args);
+		of_node_put(cpu_np);
 		if (ret < 0)
 			return ret;
 
 		ret = qcom_cpu_resources_init(pdev, cpu, args.args[0],
 					      args.args[1], xo_rate,
 					      cpu_hw_rate);
+		of_node_put(args.np);
 		if (ret)
 			return ret;
 	}
