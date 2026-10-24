@@ -26,5 +26,5 @@ obj-$(CONFIG_CGROUP_CPUACCT) += cpuacct.o
 obj-$(CONFIG_CPU_FREQ) += cpufreq.o
 obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 obj-$(CONFIG_PSI) += psi.o
-obj-$(CONFIG_SMP) += cpupri.o cpudeadline.o energy.o sched_avg.o
+obj-$(CONFIG_SMP) += cpupri.o cpudeadline.o energy.o
 obj-$(CONFIG_SCHED_WALT) += walt/
