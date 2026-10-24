@@ -1430,8 +1430,10 @@ struct load_weight {
  */
 struct sched_avg {
 	u64 last_update_time, load_sum;
+	u64 runnable_sum;
 	u32 util_sum, period_contrib;
 	unsigned long load_avg, util_avg;
+	unsigned long runnable_avg;
 };
 
 #ifdef CONFIG_SCHEDSTATS
@@ -1580,6 +1582,7 @@ struct sched_entity {
 	 * collide with read-mostly values above.
 	 */
 	struct sched_avg	avg ____cacheline_aligned_in_smp;
+	unsigned long runnable_weight;
 #endif
 };
 

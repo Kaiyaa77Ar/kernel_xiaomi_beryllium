@@ -503,6 +503,8 @@ struct cfs_bandwidth { };
 struct cfs_rq {
 	struct load_weight load;
 	unsigned int nr_running, h_nr_running;
+	unsigned int h_nr_runnable;
+	struct sched_entity *h_curr;
 
 	u64 exec_clock;
 	u64 min_vruntime;
@@ -855,6 +857,19 @@ struct rq {
 
 	/* This is used to determine avg_idle's max value */
 	u64 max_idle_balance_cost;
+
+	/*
+	 * PELT (Per Entity Load Tracking) support, used when WALT is
+	 * disabled (walt_disabled) to drive load/util tracking via the
+	 * standalone pelt.c implementation instead of the window-based
+	 * WALT scheme.
+	 */
+	struct sched_avg avg_rt;
+	struct sched_avg avg_dl;
+	u64 clock_pelt;
+	u64 lost_idle_time;
+	u64 clock_pelt_idle;
+	u64 clock_idle;
 #endif
 
 #ifdef CONFIG_SCHED_WALT

@@ -90,6 +90,7 @@
 
 #include "sched.h"
 #include "walt/walt.h"
+#include "pelt.h"
 #include "../workqueue_internal.h"
 #include "../smpboot.h"
 #include "../time/tick-internal.h"
@@ -118,6 +119,8 @@ void update_rq_clock(struct rq *rq)
 	if (delta < 0)
 		return;
 	rq->clock += delta;
+	if (walt_disabled)
+		update_rq_clock_pelt(rq, delta);
 	update_rq_clock_task(rq, delta);
 }
 
