@@ -2313,7 +2313,7 @@ int __read_mostly min_power_cpu;
 
 void walt_sched_energy_populated_callback(void)
 {
-	struct sched_cluster *cluster;
+	struct walt_sched_cluster *cluster;
 	int prev_max = 0, next_min = 0;
 
 	mutex_lock(&cluster_lock);
