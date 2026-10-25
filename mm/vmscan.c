@@ -133,8 +133,6 @@ struct scan_control {
 	/* help kswapd make better choices among multiple memcgs */
 	unsigned int memcgs_need_aging:1;
 	unsigned long last_reclaimed;
-	/* set when low-protection reserves force a second reclaim pass */
-	unsigned int memcg_low_reclaim:1;
 	/* task state for the debugfs command handler */
 	struct reclaim_state reclaim_state;
 #endif
