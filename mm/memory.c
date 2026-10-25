@@ -122,6 +122,13 @@ static int __init disable_randmaps(char *s)
 }
 __setup("norandmaps", disable_randmaps);
 
+#ifndef arch_faults_on_old_pte
+static inline bool arch_faults_on_old_pte(void)
+{
+	return false;
+}
+#endif
+
 unsigned long zero_pfn __read_mostly;
 unsigned long highest_memmap_pfn __read_mostly;
 
@@ -2205,8 +2212,15 @@ static inline int pte_unmap_same(struct mm_struct *mm, struct fault_env *fe,
 	return ret;
 }
 
-static inline void cow_user_page(struct page *dst, struct page *src, unsigned long va, struct vm_area_struct *vma)
+static inline int cow_user_page(struct page *dst, struct page *src,
+				struct fault_env *fe, pte_t orig_pte)
 {
+	struct vm_area_struct *vma = fe->vma;
+	struct mm_struct *mm = vma->vm_mm;
+	unsigned long va = fe->address;
+	pte_t entry;
+	spinlock_t *ptl;
+
 	debug_dma_assert_idle(src);
 
 	/*
@@ -2216,21 +2230,53 @@ static inline void cow_user_page(struct page *dst, struct page *src, unsigned lo
 	 * fails, we just zero-fill it. Live with it.
 	 */
 	if (unlikely(!src)) {
-		void *kaddr = kmap_atomic(dst);
-		void __user *uaddr = (void __user *)(va & PAGE_MASK);
+		void *kaddr;
 
+		/* On architectures with software "accessed" bits, we would
+		 * take a double page fault, so mark it accessed here.
+		 */
+		if (arch_faults_on_old_pte() && !pte_young(orig_pte)) {
+			pte_t *pte;
+
+			pte = pte_offset_map_lock(mm, fe->pmd, va, &ptl);
+			if (likely(pte_same(*pte, orig_pte))) {
+				entry = pte_mkyoung(orig_pte);
+				if (ptep_set_access_flags(vma, va, pte,
+							  entry, 0))
+					update_mmu_cache(vma, va, pte);
+			} else {
+				/* Other thread has already handled the fault
+				 * and we don't need to do anything. If it's
+				 * not the case, the fault will be triggered
+				 * again on the same address.
+				 */
+				pte_unmap_unlock(pte, ptl);
+				return -1;
+			}
+			pte_unmap_unlock(pte, ptl);
+		}
+
+		kaddr = kmap_atomic(dst);
 		/*
 		 * This really shouldn't fail, because the page is there
 		 * in the page tables. But it might just be unreadable,
 		 * in which case we just give up and fill the result with
 		 * zeroes.
 		 */
-		if (__copy_from_user_inatomic(kaddr, uaddr, PAGE_SIZE))
+		if (__copy_from_user_inatomic(kaddr,
+				(void __user *)(va & PAGE_MASK), PAGE_SIZE)) {
+			/* Give a warn in case there can be some obscure
+			 * use-case
+			 */
+			WARN_ON_ONCE(1);
 			clear_page(kaddr);
+		}
 		kunmap_atomic(kaddr);
 		flush_dcache_page(dst);
 	} else
 		copy_user_highpage(dst, src, va, vma);
+
+	return 0;
 }
 
 static gfp_t __get_fault_gfp_mask(struct vm_area_struct *vma)
@@ -2383,7 +2429,18 @@ static int wp_page_copy(struct fault_env *fe, pte_t orig_pte,
 				fe->address);
 		if (!new_page)
 			goto out;
-		cow_user_page(new_page, old_page, fe->address, vma);
+
+		if (cow_user_page(new_page, old_page, fe, orig_pte)) {
+			/* COW failed, if the fault was solved by other,
+			 * it's fine. If not, userspace would re-fault on
+			 * the same address and we will handle the fault
+			 * from the second attempt.
+			 */
+			put_page(new_page);
+			if (old_page)
+				put_page(old_page);
+			return 0;
+		}
 	}
 
 	if (mem_cgroup_try_charge(new_page, mm, GFP_KERNEL, &memcg, false))
