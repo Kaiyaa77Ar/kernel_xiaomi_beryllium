@@ -20,6 +20,8 @@
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
+#include <linux/kthread.h>
+#include <linux/sched.h>
 #include <linux/workqueue.h>
 #include <linux/dma-buf.h>
 #include <linux/pm_runtime.h>
@@ -567,7 +569,7 @@ int kgsl_context_init(struct kgsl_device_private *dev_priv,
 		 * detached contexts waiting to finish
 		 */
 
-		flush_workqueue(device->events_wq);
+		kthread_flush_worker(device->events_worker);
 		id = _kgsl_get_context_id(device);
 	}
 
@@ -4899,8 +4901,18 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 				PM_QOS_DEFAULT_VALUE);
 	}
 
-	device->events_wq = alloc_workqueue("kgsl-events",
-		WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_SYSFS | WQ_HIGHPRI, 0);
+	device->events_worker = kthread_create_worker(0, "kgsl-events");
+	if (IS_ERR(device->events_worker)) {
+		status = PTR_ERR(device->events_worker);
+		goto error;
+	}
+
+	/*
+	 * Use a dedicated high-priority kernel thread instead of a
+	 * workqueue for GPU event handling, so it is not delayed by
+	 * other unbound workqueue work.
+	 */
+	sched_set_fifo(device->events_worker->task);
 
 	/* Initialize the snapshot engine */
 	kgsl_device_snapshot_init(device);
@@ -4923,7 +4935,7 @@ EXPORT_SYMBOL(kgsl_device_platform_probe);
 
 void kgsl_device_platform_remove(struct kgsl_device *device)
 {
-	destroy_workqueue(device->events_wq);
+	kthread_destroy_worker(device->events_worker);
 
 	kgsl_device_snapshot_close(device);
 
