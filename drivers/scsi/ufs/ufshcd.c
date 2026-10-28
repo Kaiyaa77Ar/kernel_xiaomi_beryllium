@@ -1848,18 +1848,19 @@ static ssize_t ufshcd_clkgate_enable_store(struct device *dev,
 		return -EINVAL;
 
 	value = !!value;
-	if (value == hba->clk_gating.is_enabled)
-		goto out;
 
-	if (value) {
-		ufshcd_release(hba, false);
-	} else {
-		spin_lock_irqsave(hba->host->host_lock, flags);
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	if (value == hba->clk_gating.is_enabled)
+		goto out_unlock;
+
+	if (value)
+		hba->clk_gating.active_reqs--;
+	else
 		hba->clk_gating.active_reqs++;
-		spin_unlock_irqrestore(hba->host->host_lock, flags);
-	}
 
 	hba->clk_gating.is_enabled = value;
+out_unlock:
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
 out:
 	return count;
 }
@@ -1911,7 +1912,7 @@ static void ufshcd_init_clk_gating(struct ufs_hba *hba)
 	snprintf(wq_name, ARRAY_SIZE(wq_name), "ufs_clk_gating_%d",
 			hba->host->host_no);
 	hba->clk_gating.clk_gating_workq =
-		create_singlethread_workqueue(wq_name);
+		alloc_workqueue(wq_name, WQ_MEM_RECLAIM | WQ_HIGHPRI | WQ_UNBOUND, 1);
 
 	gating->is_enabled = true;
 
@@ -4511,9 +4512,10 @@ static int ufshcd_uic_pwr_ctrl(struct ufs_hba *hba, struct uic_command *cmd)
 		ufshcd_disable_intr(hba, UIC_COMMAND_COMPL);
 		/*
 		 * Make sure UIC command completion interrupt is disabled before
-		 * issuing UIC command.
+		 * issuing UIC command. Perform read back to ensure the bit
+		 * has taken effect on the device.
 		 */
-		wmb();
+		ufshcd_readl(hba, REG_INTERRUPT_ENABLE);
 		reenable_intr = true;
 	}
 	ret = __ufshcd_send_uic_cmd(hba, cmd, false);
@@ -7200,7 +7202,7 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 			/* command completed already */
 			dev_err(hba->dev, "%s: cmd at tag %d successfully cleared from DB.",
 				__func__, tag);
-			goto out;
+			goto cleanup;
 		} else {
 			dev_err(hba->dev,
 				"%s: no response from device. tag = %d, err %d",
@@ -7243,6 +7245,14 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 
 	clear_bit_unlock(tag, &hba->lrb_in_use);
 	wake_up(&hba->dev_cmd.tag_wq);
+
+cleanup:
+	scsi_dma_unmap(cmd);
+
+	spin_lock_irqsave(host->host_lock, flags);
+	ufshcd_outstanding_req_clear(hba, tag);
+	hba->lrb[tag].cmd = NULL;
+	spin_unlock_irqrestore(host->host_lock, flags);
 
 out:
 	if (!err) {
@@ -9418,7 +9428,7 @@ static int ufshcd_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 
 	/* UFS device & link must be active before we enter in this function */
 	if (!ufshcd_is_ufs_dev_active(hba) || !ufshcd_is_link_active(hba))
-		goto set_vreg_lpm;
+		goto disable_clks;
 
 	if (ufshcd_is_runtime_pm(pm_op)) {
 		if (ufshcd_can_autobkops_during_suspend(hba)) {
@@ -10547,6 +10557,7 @@ static int ufshcd_devfreq_target(struct device *dev,
 
 	start = ktime_get();
 	ret = ufshcd_devfreq_scale(hba, scale_up);
+	pm_runtime_put(hba->dev);
 	trace_ufshcd_profile_clk_scaling(dev_name(hba->dev),
 		(scale_up ? "up" : "down"),
 		ktime_to_us(ktime_sub(ktime_get(), start)), ret);
@@ -10743,8 +10754,9 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 	/*
 	 * Make sure that UFS interrupts are disabled and any pending interrupt
 	 * status is cleared before registering UFS interrupt handler.
+	 * Perform read back to ensure the writes have reached the device.
 	 */
-	mb();
+	ufshcd_readl(hba, REG_INTERRUPT_ENABLE);
 
 	/* IRQ registration */
 	err = devm_request_irq(dev, irq, ufshcd_intr, IRQF_SHARED,
@@ -10790,7 +10802,7 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 		snprintf(wq_name, ARRAY_SIZE(wq_name), "ufs_clkscaling_%d",
 			 host->host_no);
-		hba->clk_scaling.workq = create_singlethread_workqueue(wq_name);
+		hba->clk_scaling.workq = alloc_workqueue(wq_name, WQ_MEM_RECLAIM | WQ_HIGHPRI | WQ_UNBOUND, 1);
 
 		ufshcd_clkscaling_init_sysfs(hba);
 	}
