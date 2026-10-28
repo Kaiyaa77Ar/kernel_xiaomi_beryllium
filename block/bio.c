@@ -1198,7 +1198,7 @@ struct bio *bio_copy_user_iov(struct request_queue *q,
 	if (!bio)
 		goto out_bmd;
 
-	if (iter->type & WRITE)
+	if (iov_iter_rw(iter) == WRITE)
 		bio_set_op_attrs(bio, REQ_OP_WRITE, 0);
 
 	ret = 0;
@@ -1350,7 +1350,7 @@ struct bio *bio_map_user_iov(struct request_queue *q,
 	/*
 	 * set data direction, and check if mapped pages need bouncing
 	 */
-	if (iter->type & WRITE)
+	if (iov_iter_rw(iter) == WRITE)
 		bio_set_op_attrs(bio, REQ_OP_WRITE, 0);
 
 	bio_set_flag(bio, BIO_USER_MAPPED);
