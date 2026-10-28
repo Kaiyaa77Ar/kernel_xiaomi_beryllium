@@ -133,6 +133,7 @@ static inline void blk_clear_rq_complete(struct request *rq)
 #define ELV_ON_HASH(rq) ((rq)->cmd_flags & REQ_HASHED)
 
 void blk_insert_flush(struct request *rq);
+bool is_flush_rq(struct request *rq);
 
 static inline struct request *__elv_next_request(struct request_queue *q)
 {

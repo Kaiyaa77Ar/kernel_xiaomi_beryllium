@@ -288,6 +288,12 @@ static void flush_end_io(struct request *flush_rq, int error)
  * RETURNS:
  * %true if flush was issued, %false otherwise.
  */
+bool is_flush_rq(struct request *rq)
+{
+	return rq->end_io == flush_end_io;
+}
+EXPORT_SYMBOL_GPL(is_flush_rq);
+
 static bool blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq)
 {
 	struct list_head *pending = &fq->flush_queue[fq->flush_pending_idx];
